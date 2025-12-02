@@ -13,7 +13,7 @@ return new class extends Migration
     {
         Schema::create('locations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('clstr_id')->constrained('clusters')->onDelete('cascade');
+            $table->foreignId('cluster_id')->constrained('clusters')->onDelete('cascade');
             $table->string('name')->unique();
             $table->string('short_name')->unique();
             $table->string('identifier')->unique(); 

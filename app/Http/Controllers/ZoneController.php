@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Category;
+use App\Models\Zone;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-class CategoryController extends Controller
+class ZoneController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -17,7 +17,7 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Category::query();
+            $query = Zone::query();
 
             // Search
             if ($request->filled('query')) {
@@ -81,19 +81,19 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::create($request->only(['name', 'identifier']));
+            $zone = Zone::create($request->only(['name', 'identifier']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $zone
             ], 201);
 
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create category',
+                'message' => 'Failed to create zone',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -105,20 +105,20 @@ class CategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $category = Category::findOrFail($id);
+            $zone = Zone::findOrFail($id);
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $zone
             ], 200);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Zone not found'
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch category',
+                'message' => 'Failed to fetch zone',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -143,26 +143,26 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->update($request->only(['name', 'identifier']));
+            $zone = Zone::findOrFail($id);
+            $zone->update($request->only(['name', 'identifier']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $zone
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Zone not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update category',
+                'message' => 'Failed to update zone',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -175,26 +175,26 @@ class CategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->delete();
+            $zone = Zone::findOrFail($id);
+            $zone->delete();
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Category deleted successfully'
+                'message' => 'Zone deleted successfully'
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Zone not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete category',
+                'message' => 'Failed to delete zone',
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\NavigationItem;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class NavigationItemController extends Controller
 {
@@ -13,23 +14,87 @@ class NavigationItemController extends Controller
      */
     public function index()
     {
-        $items = NavigationItem::with('children')->whereNull('parent_id')->orderBy('order')->get();
-         $cleanedItems = $this->cleanPaths($items);
+        $user = Auth::user();
+
+        $items = NavigationItem::with('children')
+            ->whereNull('parent_id')
+            ->orderBy('order')
+            ->get();
+
+        if ($user->is_super_admin) {
+            $cleanedItems = $this->cleanPaths($items);
+            return response()->json($cleanedItems);
+        }
+
+        // Permissions for non-super-admins
+        $permissions = $user->getAllPermissions()
+            ->pluck('name')
+            ->filter(function ($perm) {
+                return str_ends_with($perm, '.list');
+            })
+            ->push('home')
+            ->toArray();
+
+        // dd($permissions);
+        // Filter menu array
+        $menuArray = $items->toArray();
+        $filteredMenu = $this->filterMenuArray($menuArray, $permissions);
+
+        // Clean paths recursively
+        $cleanedItems = $this->cleanPaths($filteredMenu, false); // false = it's array now
 
         return response()->json($cleanedItems);
     }
 
-    private function cleanPaths($items)
+    /**
+     * Filter menu array by permissions
+     */
+    private function filterMenuArray(array $items, array $permissions): array
     {
-        return $items->map(function ($item) {
-            $item->path = is_string($item->path) ? str_replace('\\/', '/', $item->path) : $item->path;
-
-            if ($item->relationLoaded('children')) {
-                $item->children = $this->cleanPaths($item->children);
+        $filtered = [];
+        foreach ($items as $item) {
+            if (!empty($item['children'])) {
+                $item['children'] = $this->filterMenuArray($item['children'], $permissions);
             }
+            $hasPermission =
+                in_array($item['key'], $permissions)   // direct permission
+                || !empty($item['children']);          // keep parent if it has allowed children
 
-            return $item;
-        });
+            if ($hasPermission) {
+                $filtered[] = $item;
+            }
+        }
+
+        return $filtered;
+    }
+
+
+    /**
+     * Clean paths for both Collections and Arrays recursively
+     */
+    private function cleanPaths($items, bool $isCollection = true)
+    {
+        if ($isCollection) {
+            return $items->map(function ($item) {
+                $item->path = is_string($item->path) ? str_replace('\\/', '/', $item->path) : $item->path;
+
+                if ($item->relationLoaded('children')) {
+                    $item->children = $this->cleanPaths($item->children);
+                }
+
+                return $item;
+            });
+        } else {
+            return array_map(function ($item) {
+                $item['path'] = is_string($item['path']) ? str_replace('\\/', '/', $item['path']) : $item['path'];
+
+                if (!empty($item['children'])) {
+                    $item['children'] = $this->cleanPaths($item['children'], false);
+                }
+
+                return $item;
+            }, $items);
+        }
     }
 
     /**
@@ -153,7 +218,7 @@ class NavigationItemController extends Controller
 
         $modules = $this->mapToAccessModules($items);
 
-    return response()->json($modules, 200, [], JSON_PRETTY_PRINT);
+       return response()->json($modules, 200, [], JSON_PRETTY_PRINT);
     }
 
     private function mapToAccessModules($items)
@@ -163,9 +228,10 @@ class NavigationItemController extends Controller
         foreach ($items as $item) {
             if ($item->relationLoaded('children') && $item->children->isNotEmpty()) {
                 foreach ($item->children as $child) {
-                    $modules[] = [
-                        'id' => str_replace(['masters.', '.list'], '', $child->key),
-                        'key' =>  str_replace('.list', '', $child->key),
+                    [$group, $module] = explode('.', str_replace('.list', '', $child->key));
+                    $modules[$group][] = [
+                        'id' => $module,
+                        'key' => str_replace('.list', '', $child->key),
                         'name' => $child->title . ' Management',
                         'description' => 'Access control for ' . strtolower($child->title) . ' operations',
                         'linkedMenuKeys' => [$child->key],
@@ -182,7 +248,7 @@ class NavigationItemController extends Controller
     {
         if ($key === 'masters.document.list') {
             return [
-                ['label' => 'Read', 'value' => 'read'],
+                ['label' => 'Read', 'value' => 'list'],
                 ['label' => 'Write', 'value' => 'write'],
                 ['label' => 'Data Entry', 'value' => 'data-entry'],
                 ['label' => 'Data Review', 'value' => 'data-review'],
@@ -191,40 +257,12 @@ class NavigationItemController extends Controller
         }
 
         return [
-            ['label' => 'Read', 'value' => 'read'],
+            ['label' => 'Read', 'value' => 'list'],
             ['label' => 'Write', 'value' => 'write'],
             ['label' => 'Delete', 'value' => 'delete'],
         ];
     }
 }
-
-
-// function assignRoleToUser(User $user, string $roleName, ?string $startDate = null, ?string $endDate = null)
-// {
-//     $role = Role::where('name', $roleName)->firstOrFail();
-
-//     // Assign role via Spatie (used for permission checks)
-//     if (!$user->hasRole($roleName)) {
-//         $user->assignRole($roleName);
-//     }
-
-//     // Avoid duplicate entry (unique constraint)
-//     $existing = UserRole::where('user_id', $user->id)
-//         ->where('role_id', $role->id)
-//         ->first();
-
-//     if ($existing) {
-//         throw new \Exception("User already has this role assigned.");
-//     }
-
-//     // Save with duration
-//     return UserRole::create([
-//         'user_id' => $user->id,
-//         'role_id' => $role->id,
-//         'start_date' => $startDate ? Carbon::parse($startDate) : now(),
-//         'end_date' => $endDate ? Carbon::parse($endDate) : null,
-//     ]);
-// }
 
 
 

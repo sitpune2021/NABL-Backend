@@ -7,9 +7,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
-use App\Models\UserRole;
+use App\Models\UserLocationDepartmentRole;
+use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class User extends Authenticatable
+class User extends Authenticatable implements JWTSubject
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasRoles;
@@ -23,6 +24,12 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'username',
+        'dial_code',
+        'phone',
+        'address',
+        'signature',
+        'is_super_admin',
     ];
 
     /**
@@ -47,21 +54,33 @@ class User extends Authenticatable
             'password' => 'hashed',
         ];
     }
-
-    public function userRoles()
+    
+    public function assignments()
     {
-        return $this->hasMany(UserRole::class);
+        return $this->hasMany(UserLocationDepartmentRole::class);
     }
 
-    public function activeRoles()
+     public function uldr()
     {
-        return $this->userRoles()
-            ->where(function ($query) {
-                $query->whereNull('end_date')
-                    ->orWhere(function ($q) {
-                        $q->whereDate('start_date', '<=', now())
-                          ->whereDate('end_date', '>=', now());
-                    });
-            })->with('role');
+        return $this->hasMany(UserLocationDepartmentRole::class);
     }
+
+    public function customPermissions()
+    {
+        return $this->hasMany(UserCustomPermission::class, 'user_location_department_role_id', 'id');
+    }
+
+    public function getJWTIdentifier()
+    {
+        return $this->getKey();
+    }
+
+    /**
+     * Return a key value array, containing any custom claims to be added to the JWT
+     */
+    public function getJWTCustomClaims()
+    {
+        return [];
+    }
+    
 }

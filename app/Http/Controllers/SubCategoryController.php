@@ -70,8 +70,8 @@ class SubCategoryController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:categories,name',
-            'identifier' => 'required|string|max:255|unique:categories,identifier',
+            'name' => 'required|string|max:255|unique:sub_categories,name',
+            'identifier' => 'required|string|max:255|unique:sub_categories,identifier',
             'cat_id' => 'required|exists:categories,id',
         ]);
 
@@ -133,9 +133,9 @@ class SubCategoryController extends Controller
     public function update(Request $request, string $id)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:categories,identifier,' . $id,
-            'cat_id' => 'sometimes|required|exists:categories,id' . $id,
+            'name' => 'sometimes|required|string|max:255|unique:sub_categories,name,' . $id,
+            'identifier' => 'sometimes|required|string|max:255|unique:sub_categories,identifier,' . $id,
+            'cat_id' => 'sometimes|required|exists:categories,id',
         ]);
 
         if ($validator->fails()) {

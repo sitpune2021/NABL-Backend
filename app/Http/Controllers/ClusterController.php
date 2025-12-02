@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Category;
+use App\Models\Cluster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-class CategoryController extends Controller
+class ClusterController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -17,14 +17,17 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Category::query();
+            $query = Cluster::with('zone'); // Eager load zone
 
             // Search
             if ($request->filled('query')) {
                 $search = $request->input('query');
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    ->orWhere('identifier', 'LIKE', "%{$search}%")
+                    ->orWhereHas('zone', function ($q2) use ($search) {
+                        $q2->where('name', 'LIKE', "%{$search}%");
+                    });
                 });
             }
 
@@ -45,7 +48,6 @@ class CategoryController extends Controller
 
             $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-
             return response()->json([
                 'status' => true,
                 'data' => $categories->items(),
@@ -54,7 +56,7 @@ class CategoryController extends Controller
 
         } catch (Exception $e) {
             return response()->json([
-                'success' => false,
+                'status' => false,
                 'message' => 'Failed to fetch categories',
                 'error' => $e->getMessage()
             ], 500);
@@ -70,6 +72,7 @@ class CategoryController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255|unique:categories,name',
             'identifier' => 'required|string|max:255|unique:categories,identifier',
+            'zone_id' => 'required|exists:categories,id',
         ]);
 
         if ($validator->fails()) {
@@ -81,19 +84,19 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::create($request->only(['name', 'identifier']));
+            $cluster = Cluster::create($request->only(['zone_id', 'name', 'identifier']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 201);
 
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create category',
+                'message' => 'Failed to create cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -105,20 +108,20 @@ class CategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $category = Category::findOrFail($id);
+            $cluster = Cluster::findOrFail($id);
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 200);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Cluster not found'
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch category',
+                'message' => 'Failed to fetch cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -132,6 +135,7 @@ class CategoryController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
             'identifier' => 'sometimes|required|string|max:255|unique:categories,identifier,' . $id,
+            'zone_id' => 'sometimes|required|exists:categories,id' . $id,
         ]);
 
         if ($validator->fails()) {
@@ -143,26 +147,26 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->update($request->only(['name', 'identifier']));
+            $cluster = Cluster::findOrFail($id);
+            $cluster->update($request->only(['zone_id', 'name', 'identifier']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Cluster not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update category',
+                'message' => 'Failed to update cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -175,26 +179,26 @@ class CategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->delete();
+            $cluster = Cluster::findOrFail($id);
+            $cluster->delete();
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Category deleted successfully'
+                'message' => 'Cluster deleted successfully'
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Cluster not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete category',
+                'message' => 'Failed to delete cluster',
                 'error' => $e->getMessage()
             ], 500);
         }

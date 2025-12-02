@@ -3,13 +3,13 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Category;
+use App\Models\Location;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-class CategoryController extends Controller
+class LocationController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -17,14 +17,18 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Category::query();
+            $query = Location::with('cluster', 'cluster.zone'); // Eager load cluster
 
             // Search
             if ($request->filled('query')) {
                 $search = $request->input('query');
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    ->orWhere('identifier', 'LIKE', "%{$search}%")
+                    ->orWhere('short_name', 'LIKE', "%{$search}%")
+                    ->orWhereHas('cluster', function ($q2) use ($search) {
+                        $q2->where('name', 'LIKE', "%{$search}%");
+                    });
                 });
             }
 
@@ -43,19 +47,18 @@ class CategoryController extends Controller
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
-            $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-
+            $locations = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             return response()->json([
                 'status' => true,
-                'data' => $categories->items(),
-                'total' => $categories->total()
+                'data' => $locations->items(),
+                'total' => $locations->total()
             ], 200);
 
         } catch (Exception $e) {
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch categories',
+                'status' => false,
+                'message' => 'Failed to fetch locations',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -68,8 +71,10 @@ class CategoryController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:categories,name',
-            'identifier' => 'required|string|max:255|unique:categories,identifier',
+            'name' => 'required|string|max:255|unique:locations,name',
+            'identifier' => 'required|string|max:255|unique:locations,identifier',
+            'short_name' => 'required|string|max:255|unique:locations,short_name',
+            'cluster_id' => 'required|exists:clusters,id',
         ]);
 
         if ($validator->fails()) {
@@ -81,19 +86,19 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::create($request->only(['name', 'identifier']));
+            $cluster = Location::create($request->only(['cluster_id', 'name', 'identifier', 'short_name']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 201);
 
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create category',
+                'message' => 'Failed to create cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -105,20 +110,20 @@ class CategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $category = Category::findOrFail($id);
+            $cluster = Location::findOrFail($id);
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 200);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Location not found'
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch category',
+                'message' => 'Failed to fetch cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -130,8 +135,10 @@ class CategoryController extends Controller
     public function update(Request $request, string $id)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:categories,identifier,' . $id,
+            'name' => 'sometimes|required|string|max:255|unique:locations,name,' . $id,
+            'identifier' => 'sometimes|required|string|max:255|unique:locations,identifier,' . $id,
+            'short_name' => 'required|string|max:255|unique:locations,short_name'. $id,
+            'cluster_id' => 'sometimes|required|exists:clusters,id' . $id,
         ]);
 
         if ($validator->fails()) {
@@ -143,26 +150,26 @@ class CategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->update($request->only(['name', 'identifier']));
+            $cluster = Location::findOrFail($id);
+            $cluster->update($request->only(['cluster_id', 'name', 'identifier', 'short_name']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $cluster
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Location not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update category',
+                'message' => 'Failed to update cluster',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -175,26 +182,26 @@ class CategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
-            $category->delete();
+            $cluster = Location::findOrFail($id);
+            $cluster->delete();
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Category deleted successfully'
+                'message' => 'Location deleted successfully'
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Category not found'
+                'message' => 'Location not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete category',
+                'message' => 'Failed to delete cluster',
                 'error' => $e->getMessage()
             ], 500);
         }

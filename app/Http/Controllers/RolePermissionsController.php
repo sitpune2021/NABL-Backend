@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\NavigationItem;
 
 class RolePermissionsController extends Controller
 {
@@ -42,7 +43,7 @@ class RolePermissionsController extends Controller
         $request->validate([
             'name' => 'required|string|unique:roles,name',
             'description' => 'nullable|string',
-            'accessRight' => 'required|array', // e.g. ['category' => ['read', 'write'], ...]
+            'accessRight' => 'required|array',
         ]);
 
         $role = Role::create([
@@ -50,10 +51,32 @@ class RolePermissionsController extends Controller
             'description' => $request->description ?? null,
         ]);
 
-        $permissions = $this->preparePermissions($request->accessRight);
+        // Fetch access modules (like seeder)
+        $modules = $this->getAccessModules();
 
-        $this->createPermissionsIfNotExist($permissions);
+        // Prepare map of module id => full key
+        $moduleMap = [];
+        foreach ($modules as $module) {
+            $moduleMap[$module['id']] = $module['key'];
+        }
 
+        // Build permission strings from payload
+        $permissions = [];
+        foreach ($request->accessRight as $moduleId => $actions) {
+            $fullKey = $moduleMap[$moduleId] ?? null;
+            if (!$fullKey) continue;
+
+            foreach ($actions as $action) {
+                $permissions[] = $fullKey . '.' . $action;
+            }
+        }
+
+        // Create permissions if not exist
+        foreach ($permissions as $permissionName) {
+            Permission::firstOrCreate(['name' => $permissionName]);
+        }
+
+        // Assign permissions to role
         $role->syncPermissions($permissions);
 
         return response()->json([
@@ -98,19 +121,34 @@ class RolePermissionsController extends Controller
         $role = Role::findOrFail($id);
 
         $request->validate([
-            'name' => 'required|string|unique:roles,name,' . $role->id,
-            'description' => 'nullable|string',
             'accessRight' => 'required|array',
         ]);
+        // Fetch access modules (like seeder)
+        $modules = $this->getAccessModules();
 
-        $role->name = $request->name;
-        $role->description = $request->description ?? null;
-        $role->save();
+        // Prepare map of module id => full key
+        $moduleMap = [];
+        foreach ($modules as $module) {
+            $moduleMap[$module['id']] = $module['key'];
+        }
 
-        $permissions = $this->preparePermissions($request->accessRight);
+        // Build permission strings from payload
+        $permissions = [];
+        foreach ($request->accessRight as $moduleId => $actions) {
+            $fullKey = $moduleMap[$moduleId] ?? null;
+            if (!$fullKey) continue;
 
-        $this->createPermissionsIfNotExist($permissions);
+            foreach ($actions as $action) {
+                $permissions[] = $fullKey . '.' . $action;
+            }
+        }
 
+        // Create permissions if not exist
+        foreach ($permissions as $permissionName) {
+            Permission::firstOrCreate(['name' => $permissionName]);
+        }
+
+        // Sync updated permissions to role
         $role->syncPermissions($permissions);
 
         return response()->json([
@@ -123,6 +161,7 @@ class RolePermissionsController extends Controller
             ],
         ]);
     }
+
 
     /**
      * Remove the specified resource from storage.
@@ -137,27 +176,23 @@ class RolePermissionsController extends Controller
         ]);
     }
 
-    // Helper: Convert permissions array (like ['category.read', 'category.write']) 
-    // to grouped accessRight array (like ['category' => ['read', 'write']])
     protected function formatPermissions(array $permissions): array
     {
         $accessRight = [];
 
         foreach ($permissions as $permission) {
-            if (strpos($permission, '.') === false) continue;
-            [$module, $action] = explode('.', $permission, 2);
-            $accessRight[$module][] = $action;
+            if (substr_count($permission, '.') < 2) continue;
+            [$group, $module, $action] = explode('.', $permission, 3);
+            $accessRight[$group][$module][] = $action;
         }
-
-        // Optional: Remove duplicates
-        foreach ($accessRight as $module => $actions) {
-            $accessRight[$module] = array_values(array_unique($actions));
+        foreach ($accessRight as $group => $modules) {
+            foreach ($modules as $module => $actions) {
+                $accessRight[$group][$module] = array_values(array_unique($actions));
+            }
         }
-
         return $accessRight;
     }
 
-    // Helper: Flatten accessRight (grouped) into permission strings
     protected function preparePermissions(array $accessRight): array
     {
         $permissions = [];
@@ -177,5 +212,56 @@ class RolePermissionsController extends Controller
         foreach ($permissions as $permissionName) {
             Permission::firstOrCreate(['name' => $permissionName]);
         }
+    }
+
+    private function getAccessModules()
+    {
+        $items = NavigationItem::with('children')
+            ->whereNull('parent_id')
+            ->orderBy('order')
+            ->get();
+
+        return $this->mapModules($items);
+    }
+
+
+    private function mapModules($items)
+    {
+        $modules = [];
+
+        foreach ($items as $item) {
+            if ($item->children->isNotEmpty()) {
+                foreach ($item->children as $child) {
+                    $modules[] = [
+                        'id' => str_replace([$item->key . '.', '.list'], '', $child->key),
+                        'key' =>  str_replace('.list', '', $child->key),
+                        'name' => $child->title . ' Management',
+                        'accessor' => $this->defaultPerms($child->key),
+                    ];
+                }
+            }
+        }
+
+        return $modules;
+    }
+
+
+    private function defaultPerms($key)
+    {
+        if ($key === 'masters.document.list') {
+            return [
+                ['label' => 'Read', 'value' => 'list'],
+                ['label' => 'Write', 'value' => 'write'],
+                ['label' => 'Data Entry', 'value' => 'data-entry'],
+                ['label' => 'Data Review', 'value' => 'data-review'],
+                ['label' => 'Delete', 'value' => 'delete'],
+            ];
+        }
+
+        return [
+            ['label' => 'Read', 'value' => 'list'],
+            ['label' => 'Write', 'value' => 'write'],
+            ['label' => 'Delete', 'value' => 'delete'],
+        ];
     }
 }
