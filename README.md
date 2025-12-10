@@ -1,7 +1,7 @@
 # 🧩 **NABL Backend API (Laravel)**
 
 A secure and scalable **Laravel REST API** built for the NABL Admin Panel (React + Vite).
-Uses **JWT authentication**, **Sanctum for SPA session**, and PostgreSQL database.
+Uses **JWT authentication** and PostgreSQL database.
 
 ---
 
@@ -11,7 +11,6 @@ Uses **JWT authentication**, **Sanctum for SPA session**, and PostgreSQL databas
 * 🔐 Sanctum SPA session support
 * 🧑‍💼 Role-based access
 * 🗄️ PostgreSQL
-* 📦 Queue & Cache via database
 * ⚡ API-first modular design
 
 ---
@@ -49,11 +48,11 @@ APP_URL=http://192.168.1.33:8000
 DB_CONNECTION=pgsql
 DB_PORT=5433
 DB_DATABASE=nabl
-DB_USERNAME=postgres
-DB_PASSWORD=1234
+DB_USERNAME=
+DB_PASSWORD=
 
-SANCTUM_STATEFUL_DOMAINS=192.168.1.3:5175,192.168.1.18:5175,192.168.1.32:5175
-SESSION_DOMAIN=192.168.1.33
+SANCTUM_STATEFUL_DOMAINS=
+SESSION_DOMAIN=
 SESSION_SECURE_COOKIE=false
 SESSION_EXPIRE_ON_CLOSE=true
 ```
@@ -130,9 +129,8 @@ php artisan serve --host=192.168.1.33 --port=8000
 
 | Method | Endpoint      | Description                         |
 | ------ | ------------- | ----------------------------------- |
-| POST   | `/api/login`  | Generate JWT token                  |
-| GET    | `/api/user`   | Get logged-in user (requires token) |
-| POST   | `/api/logout` | Invalidate token                    |
+| POST   | `/api/sign-in`  | Generate JWT token                  |
+| POST   | `/api/sign-in` | Invalidate token                    |
 
 ---
 
@@ -145,13 +143,7 @@ Inside `config/cors.php`:
     'http://192.168.1.3:5175',
     'http://192.168.1.18:5175',
     'http://192.168.1.32:5175',
-];
+];  
 ```
-
----
-
-# 📄 License
-
-MIT License
 
 ---

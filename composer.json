@@ -1,8 +1,8 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "nabl/nabl-backend",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "NABL Backend API",
     "keywords": ["laravel", "framework"],
     "license": "MIT",
     "require": {
