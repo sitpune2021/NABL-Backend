@@ -9,6 +9,7 @@ use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
 use App\Models\UserLocationDepartmentRole;
 use Tymon\JWTAuth\Contracts\JWTSubject;
+use Illuminate\Support\Facades\Hash;
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -82,5 +83,24 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
+
+    public static function createLabUser($name,$email)
+    {
+        return self::firstOrCreate(
+            ['email'=>$email],
+            [
+                'name'=>$name,
+                'username'=>strtolower($name).'_'.explode('@',$email)[0],
+                'password'=> Hash::make('defaultpassword123'),
+                'is_super_admin'=>true
+            ]
+        );
+    }
+
+    public function labs()
+{
+    return $this->belongsToMany(Lab::class, 'lab_users');
+}
+
     
 }

@@ -11,11 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('templates', function (Blueprint $table) {
+        Schema::create('lab_locations', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->enum('type', ['header', 'footer'])->nullable();
-            $table->enum('status', ['draft', 'published', 'archived'])->default('draft'); 
+            $table->foreignId('lab_id')->constrained('labs')->onDelete('cascade'); 
+            $table->foreignId('location_id')->constrained('locations')->onDelete('cascade'); 
+            $table->string('shortName')->nullable();
+            $table->string('prefix')->unique();
+            $table->text('address')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -26,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('templates');
+        Schema::dropIfExists('lab_locations');
     }
 };

@@ -11,11 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('templates', function (Blueprint $table) {
+        Schema::create('lab_location_departments', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->enum('type', ['header', 'footer'])->nullable();
-            $table->enum('status', ['draft', 'published', 'archived'])->default('draft'); 
+            $table->foreignId('lab_location_id')->constrained('lab_locations')->onDelete('cascade'); 
+            $table->foreignId('department_id')->constrained('departments')->cascadeOnDelete();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -26,6 +25,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('templates');
+        Schema::dropIfExists('lab_location_departments');
     }
 };

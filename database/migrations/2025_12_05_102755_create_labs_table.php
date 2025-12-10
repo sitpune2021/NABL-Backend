@@ -11,11 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('templates', function (Blueprint $table) {
+        Schema::create('labs', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->enum('type', ['header', 'footer'])->nullable();
-            $table->enum('status', ['draft', 'published', 'archived'])->default('draft'); 
+            $table->string('labType');
+            $table->string('labCode')->unique();
+            $table->text('address')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });
@@ -26,6 +27,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('templates');
+        Schema::dropIfExists('labs');
     }
 };

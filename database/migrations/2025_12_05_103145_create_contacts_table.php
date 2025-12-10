@@ -11,11 +11,13 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('templates', function (Blueprint $table) {
+        Schema::create('contacts', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->enum('type', ['header', 'footer'])->nullable();
-            $table->enum('status', ['draft', 'published', 'archived'])->default('draft'); 
+            $table->morphs('contactable'); // Polymorphic: contactable_id + contactable_type
+            $table->enum('type', ['email', 'phone']);
+            $table->string('value');
+            $table->string('label')->nullable(); // e.g. primary, alternate, office, landline, emergency
+            $table->boolean('is_primary')->default(false);
             $table->timestamps();
             $table->softDeletes();
         });
@@ -26,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('templates');
+        Schema::dropIfExists('contacts');
     }
 };

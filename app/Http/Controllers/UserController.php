@@ -3,17 +3,18 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Models\UserCustomPermission;
 use App\Http\Requests\StoreUserRequest;
 use Illuminate\Support\Facades\Validator;
-use App\Models\UserLocationDepartmentRole;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Str;
+use App\Models\{Lab, LabLocation, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole};
+
 
 class UserController extends Controller
 {

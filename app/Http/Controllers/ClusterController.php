@@ -46,18 +46,18 @@ class ClusterController extends Controller
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
-            $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $clusters = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             return response()->json([
                 'status' => true,
-                'data' => $categories->items(),
-                'total' => $categories->total()
+                'data' => $clusters->items(),
+                'total' => $clusters->total()
             ], 200);
 
         } catch (Exception $e) {
             return response()->json([
                 'status' => false,
-                'message' => 'Failed to fetch categories',
+                'message' => 'Failed to fetch clusters',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -70,9 +70,9 @@ class ClusterController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:categories,name',
-            'identifier' => 'required|string|max:255|unique:categories,identifier',
-            'zone_id' => 'required|exists:categories,id',
+            'name' => 'required|string|max:255|unique:clusters,name',
+            'identifier' => 'required|string|max:255|unique:clusters,identifier',
+            'zone_id' => 'required|exists:zones,id',
         ]);
 
         if ($validator->fails()) {
@@ -133,9 +133,9 @@ class ClusterController extends Controller
     public function update(Request $request, string $id)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:categories,identifier,' . $id,
-            'zone_id' => 'sometimes|required|exists:categories,id' . $id,
+            'name' => 'sometimes|required|string|max:255|unique:clusters,name,' . $id,
+            'identifier' => 'sometimes|required|string|max:255|unique:clusters,identifier,' . $id,
+            'zone_id' => 'sometimes|required|exists:zones,id',
         ]);
 
         if ($validator->fails()) {

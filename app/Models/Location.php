@@ -21,4 +21,10 @@ class Location extends Model
     {
         return $this->belongsTo(Cluster::class, 'cluster_id');
     }
+
+    public function getZoneIdAttribute()
+    {
+        return $this->cluster->zone->id ?? null;
+    }
+
 }
