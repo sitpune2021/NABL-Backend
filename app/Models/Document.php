@@ -3,78 +3,48 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use App\Models\DocumentEditor;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Document extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = [
-        'labName',
-        'location',
-        'department',
-        'header',
-        'footer',
-        'amendmentNo',
-        'amendmentDate',
-        'approvedBy',
-        'category',
-        'copyNo',
-        'documentName',
-        'documentNo',
-        'durationValue',
-        'durationUnit',
-        'effectiveDate',
-        'frequency',
-        'issueDate',
-        'issuedBy',
-        'issuedNo',
-        'preparedBy',
-        'preparedByDate',
-        'quantityPrepared',
+        'name',
+        'category_id',
         'status',
-        'time',
+        'mode'
     ];
 
-    protected $casts = [
-        'department' => 'array',
-        'amendmentDate' => 'datetime',
-        'date' => 'datetime',
-        'effectiveDate' => 'datetime',
-        'issueDate' => 'datetime',
-        'preparedByDate' => 'datetime',
-        'time' => 'datetime',
-    ];
-
-    // Relation to DocumentEditor
-    // Document.php
-    public function editor()
+    public function category()
     {
-        return $this->hasOne(DocumentEditor::class);
-    }
-    public function dataEntrySchedule()
-    {
-        return $this->hasOne(DocumentEditor::class);
+        return $this->belongsTo(Category::class, 'category_id');
     }
 
-
-    // Accessor to return nested editor structure
-    public function getEditorAttribute()
+    // Relationships
+    public function versions()
     {
-        $editor = $this->editor()->first();
-
-        if (!$editor) {
-            return null;
-        }
-
-        return [
-            'id' => $editor->id,
-            'documentId' => $editor->document_id,
-            'document' => $editor->document ?? [
-                'html' => '',
-                'css' => '',
-                'js' => '',
-            ],
-        ];
+        return $this->hasMany(DocumentVersion::class);
     }
-    
+
+    public function currentVersion()
+    {
+        return $this->hasOne(DocumentVersion::class)->where('is_current', true);
+    }
+
+    public function departments()
+    {
+        return $this->belongsToMany(Department::class, 'document_departments');
+    }
+
+    public function history()
+    {
+        return $this->hasMany(DocumentHistory::class);
+    }
+
+      public function clauseLinks()
+    {
+        return $this->hasMany(ClauseDocumentLink::class, 'document_id', 'id');
+    }
 
 }

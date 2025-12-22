@@ -1,0 +1,92 @@
++-----------------------+
+|       standards       |
++-----------------------+
+| id (PK)               |
+| uuid                  |
+| name                  |
+| version_major         |
+| version_minor         |
+| changes_type          |
+| status                |
+| is_current            |
+| created_by (FK users) |
+| created_at            |
+| updated_at            |
++-----------------------+
+          |
+          | 1
+          |
+          | N
++-----------------------+
+|        clauses        |
++-----------------------+
+| id (PK)               |
+| standard_id (FK)      |
+| parent_id (FK)        |
+| title                 |
+| message               |
+| note                  |
+| is_child              |
+| numbering_type        |
+| numbering_value       |
+| sort_order            |
+| created_at            |
+| updated_at            |
++-----------------------+
+          |
+          | 1
+          |
+          | N
++-------------------------------+
+|   clause_document_links       |
++-------------------------------+
+| id (PK)                       |
+| standard_id (FK)              |
+| clause_id (FK)                |
+| document_id (FK)              |
+| document_version_id (FK, opt) |
+| category_id                   |
+| created_at                    |
+| updated_at                    |
++-------------------------------+
+          /\
+          |
+          |
+          |
++------------------+
+|    documents     |
++------------------+
+| id (PK)          |
+| name             |
+| category_id      |
+| status           |
+| mode             |
+| created_at       |
+| updated_at       |
+| deleted_at       |
++------------------+
+          |
+          | 1
+          |
+          | N
++-----------------------+
+|  document_versions    |
++-----------------------+
+| id (PK)               |
+| document_id (FK)      |
+| major_version         |
+| minor_version         |
+| full_version          |
+| number (unique)       |
+| copy_no               |
+| is_current            |
+| workflow_state        |
+| version_status        |
+| effective_date        |
+| editor_schema (JSON)  |
+| form_fields (JSON)    |
+| schedule (JSON)       |
+| created_at            |
+| updated_at            |
+| deleted_at            |
++-----------------------+

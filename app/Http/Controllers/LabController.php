@@ -16,20 +16,39 @@ class LabController extends Controller
      */
     public function index()
     {
-        $labs = Lab::with(['contacts', 'locations', 'locations.contacts', 'users'])->get();
+        $authUser = auth()->user();
+
+        $labIds = \App\Models\LabUser::where('user_id', $authUser->id)
+                    ->pluck('lab_id');
+
+        $query = Lab::with([
+            'contacts',
+            'location',
+            'location.contacts',
+            'users'
+        ]);
+
+        // If user is a lab user → restrict labs
+        if ($labIds->isNotEmpty()) {
+            $query->whereIn('id', $labIds);
+        }
+
+        // Otherwise → show all labs
+        $labs = $query->get();
 
         return response()->json([
-            'list' => $labs,
+            'data'  => $labs,
             'total' => $labs->count()
         ]);
     }
+
 
     /**
      * Store a newly created resource in storage.
      */
     public function store(Request $request)
     {
-         DB::beginTransaction();
+        DB::beginTransaction();
 
         try {
             // 1. Create Lab
@@ -65,9 +84,9 @@ class LabController extends Controller
                 $user = User::firstOrCreate(
                     ['email' => $primaryEmail['value'] ?? null],
                     [
-                        'name' => 'Lab Admin', // Or generate a name
+                        'name' => 'Lab Admin',
                         'username' => Str::lower(Str::random(10)),
-                        'dial_code' => $primaryPhone['value'] ? '+91' : null, // example
+                        'dial_code' => $primaryPhone['value'] ? '+91' : null,
                         'phone' => $primaryPhone['value'] ?? null,
                         'address' => $request->address ?? null,
                         'password' => Hash::make('superadmin1234'),
@@ -80,7 +99,8 @@ class LabController extends Controller
                     'user_id' => $user->id,
                 ]);
             }
-            // 3. Lab Locations
+
+            // 3. Lab location
             foreach ($request->location ?? [] as $loc) {
                 $labLocation = LabLocation::create([
                     'lab_id' => $lab->id,
@@ -125,10 +145,8 @@ class LabController extends Controller
                         ]
                     );
 
-                    // Assign role
                     $admin->assignRole('Admin');
 
-                    // Assign ULDR (example: first department in location)
                     $departmentId = $loc['departments'][0]['name'] ?? null;
                     if ($departmentId) {
                         $this->assignULDR(
@@ -140,14 +158,46 @@ class LabController extends Controller
                     }
                 }
 
-
                 // Departments
                 foreach ($loc['departments'] ?? [] as $dept) {
                     LabLocationDepartment::create([
                         'lab_location_id' => $labLocation->id,
-                        'department_id' => $dept['name'] ?? null, // Ensure department exists
+                        'department_id' => $dept['name'] ?? null,
                     ]);
                 }
+            }
+
+            // 4. Save Lab Clause Documents (NEW)
+            if (!empty($request->selectedClauses)) {
+                $records = [];
+                $standardId = $request->standard_id; // Ensure standard_id is sent from frontend
+
+                foreach ($request->selectedClauses as $item) {
+                    if (str_starts_with($item, 'clause-')) {
+                        $clauseId = intval(substr($item, 7));
+                        $records[] = [
+                            'lab_id' => $lab->id,
+                            'standard_id' => $standardId,
+                            'clause_id' => $clauseId,
+                            'document_id' => null,
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                    } elseif (str_starts_with($item, 'doc-')) {
+                        // format: doc-{clauseId}-{docId}
+                        [$prefix, $clauseId, $docId] = explode('-', $item);
+                        $records[] = [
+                            'lab_id' => $lab->id,
+                            'standard_id' => $standardId,
+                            'clause_id' => intval($clauseId),
+                            'document_id' => intval($docId),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ];
+                    }
+                }
+
+                \App\Models\LabClauseDocument::insert($records);
             }
 
             DB::commit();
@@ -163,30 +213,115 @@ class LabController extends Controller
      * Display the specified lab.
      */
     public function show(string $id)
-    {
-        try {
-            // Eager load relationships: contacts, locations (with their contacts), and users
-            $lab = Lab::with(['contacts', 'locations', 'locations.contacts','locations.locationRecord', 'users'])->findOrFail($id);
+{
+    try {
+        $lab = Lab::with([
+            'contacts',
+            'location.contacts',
+            'location.departments',
+            // 'location.instruments',
+            'location.locationRecord',
+            'location.locationRecord.cluster'
+        ])->findOrFail($id);
 
-            return response()->json([
-                'success' => true,
-                'data' => $lab
-            ], 200);
+        $data = [
+            'name'     => $lab->name,
+            'labType'  => $lab->labType,
+            'labCode'  => $lab->labCode,
+            'address'  => $lab->address,
 
-        } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Lab not found'
-            ], 404);
+            // Lab Emails
+            'emails' => $lab->contacts
+                ->where('type', 'email')
+                ->map(fn ($c) => [
+                    'type'       => 'email',
+                    'value'      => $c->value,
+                    'label'      => $c->label,
+                    'is_primary' => (bool) $c->is_primary,
+                ])
+                ->values(),
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch lab',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+            // Lab Phones
+            'phones' => $lab->contacts
+                ->where('type', 'phone')
+                ->map(fn ($c) => [
+                    'type'       => 'phone',
+                    'value'      => $c->value,
+                    'label'      => $c->label,
+                    'is_primary' => (bool) $c->is_primary,
+                ])
+                ->values(),
+
+            // location
+            'location' => $lab->location->map(function ($location) {
+
+                return [
+                    'zone_name'     => $location->locationRecord->cluster->zone_id ?? null,
+                    'cluster_name'  => $location->locationRecord->cluster->id ?? null,
+                    'location_name' => $location->location_id,
+
+                    'prefix'    => $location->prefix,
+                    'shortName' => $location->shortName,
+                    'address'   => $location->address,
+
+                    // Location Emails
+                    'emails' => $location->contacts
+                        ->where('type', 'email')
+                        ->map(fn ($c) => [
+                            'type'       => 'email',
+                            'value'      => $c->value,
+                            'label'      => $c->label,
+                            'is_primary' => (bool) $c->is_primary,
+                        ])
+                        ->values(),
+
+                    // Location Phones
+                    'phones' => $location->contacts
+                        ->where('type', 'phone')
+                        ->map(fn ($c) => [
+                            'type'       => 'phone',
+                            'value'      => $c->value,
+                            'label'      => $c->label,
+                            'is_primary' => (bool) $c->is_primary,
+                        ])
+                        ->values(),
+
+                    // Instruments
+                    // 'instruments' => $location->instruments
+                    //     ->pluck('id')
+                    //     ->values(),
+
+                    // Departments
+                    'departments' => $location->departments->map(fn ($dept) => [
+                        'name' => $dept->department_id,
+                        // 'instruments' => $dept->instruments
+                        //     ->pluck('id')
+                        //     ->values(),
+                    ])->values(),
+                ];
+            })->values(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ], 200);
+
+    } catch (ModelNotFoundException $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Lab not found',
+        ], 404);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch lab',
+            'error'   => $e->getMessage(),
+        ], 500);
     }
+}
+
 
 
     /**

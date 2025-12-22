@@ -3,14 +3,13 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\SubCategory;
-use App\Models\LabUser;
+use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-class SubCategoryController extends Controller
+class UnitController extends Controller
 {
     /**
      * Display a listing of the resource.
@@ -18,44 +17,13 @@ class SubCategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $user = auth()->user();
-
-            $labUser = LabUser::where('user_id', $user->id)->first();
-
-            $query = SubCategory::with('category'); // Eager load category
-
-            if ($labUser) {
-                // Only include subcategories whose categories are linked to documents of this lab
-                $query->whereHas('category', function ($q) use ($labUser) {
-                    $q->whereIn('id', function ($subQuery) use ($labUser) {
-                        $subQuery->select('category_id')
-                                ->from('documents')
-                                ->whereIn('id', function ($q2) use ($labUser) {
-                                    $q2->select('document_id')
-                                        ->from('lab_clause_documents')
-                                        ->where('lab_id', $labUser->lab_id);
-                                });
-                    });
-                });
-            }
+            $query = Unit::query();
 
             // Search
             if ($request->filled('query')) {
                 $search = $request->input('query');
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%")
-                    ->orWhereHas('category', function ($q2) use ($search) {
-                        $q2->where('name', 'LIKE', "%{$search}%");
-                    });
-                });
-            }
-
-            if ($request->filled('categories')) {
-                $categories = $request->input('categories'); // [4, 6, 7]
-
-                $query->whereHas('category', function ($q) use ($categories) {
-                    $q->whereIn('id', $categories);
+                    $q->where('name', 'LIKE', "%{$search}%");
                 });
             }
 
@@ -63,7 +31,7 @@ class SubCategoryController extends Controller
             $sortKey = $request->input('sort.key', 'id'); // default sort by id
             $sortOrder = $request->input('sort.order', 'asc'); // default ascending
 
-            $allowedSortColumns = ['id', 'name', 'identifier', 'created_at', 'updated_at'];
+            $allowedSortColumns = ['id', 'name', 'created_at', 'updated_at'];
             $allowedSortOrder = ['asc', 'desc'];
 
             if (in_array($sortKey, $allowedSortColumns) && in_array(strtolower($sortOrder), $allowedSortOrder)) {
@@ -74,23 +42,23 @@ class SubCategoryController extends Controller
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
-            $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $units = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+
 
             return response()->json([
                 'status' => true,
-                'data' => $categories->items(),
-                'total' => $categories->total()
+                'data' => $units->items(),
+                'total' => $units->total()
             ], 200);
 
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             return response()->json([
-                'status' => false,
-                'message' => 'Failed to fetch categories',
+                'success' => false,
+                'message' => 'Failed to fetch units',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
-
 
     /**
      * Store a newly created resource in storage.
@@ -98,9 +66,7 @@ class SubCategoryController extends Controller
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:sub_categories,name',
-            'identifier' => 'required|string|max:255|unique:sub_categories,identifier',
-            'cat_id' => 'required|exists:categories,id',
+            'name' => 'required|string|max:255|unique:units,name',
         ]);
 
         if ($validator->fails()) {
@@ -112,19 +78,19 @@ class SubCategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = SubCategory::create($request->only(['cat_id', 'name', 'identifier']));
+            $unit = Unit::create($request->only(['name']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $unit
             ], 201);
 
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create category',
+                'message' => 'Failed to create unit',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -136,20 +102,20 @@ class SubCategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $category = SubCategory::findOrFail($id);
+            $unit = Unit::findOrFail($id);
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $unit
             ], 200);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Sub Category not found'
+                'message' => 'Unit not found'
             ], 404);
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch category',
+                'message' => 'Failed to fetch unit',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -161,9 +127,7 @@ class SubCategoryController extends Controller
     public function update(Request $request, string $id)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:sub_categories,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:sub_categories,identifier,' . $id,
-            'cat_id' => 'sometimes|required|exists:categories,id',
+            'name' => 'sometimes|required|string|max:255|unique:units,name,' . $id,
         ]);
 
         if ($validator->fails()) {
@@ -175,26 +139,26 @@ class SubCategoryController extends Controller
 
         DB::beginTransaction();
         try {
-            $category = SubCategory::findOrFail($id);
-            $category->update($request->only(['cat_id', 'name', 'identifier']));
+            $unit = Unit::findOrFail($id);
+            $unit->update($request->only(['name']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $category
+                'data' => $unit
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Sub Category not found'
+                'message' => 'Unit not found'
             ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update category',
+                'message' => 'Failed to update unit',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -207,26 +171,26 @@ class SubCategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            $category = SubCategory::findOrFail($id);
-            $category->delete();
+            $unit = Unit::findOrFail($id);
+            $unit->delete();
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Sub Category deleted successfully'
+                'message' => 'Unit deleted successfully'
             ], 200);
 
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Sub Category not found'
+                'message' => 'Unit not found'
             ], 404);
-        } catch (\Exception $e) {
+        } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to delete category',
+                'message' => 'Failed to delete unit',
                 'error' => $e->getMessage()
             ], 500);
         }

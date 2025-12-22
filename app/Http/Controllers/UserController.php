@@ -24,13 +24,26 @@ class UserController extends Controller
     public function index(Request $request)
     {
         try {
-            // Base query with eager loading
+            $currentUser = auth()->user();
+
+            // Check if the logged-in user is a lab user
+            $labUser = \App\Models\LabUser::where('user_id', $currentUser->id)->first();
+
             $query = User::with([
                 'assignments.location',
                 'assignments.department',
                 'assignments.role',
                 'assignments.customPermissions.permission'
             ]);
+
+            if ($labUser) {
+                // Filter users by the same lab
+                $query->whereIn('id', function ($q) use ($labUser) {
+                    $q->select('user_id')
+                    ->from('lab_users')
+                    ->where('lab_id', $labUser->lab_id);
+                });
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -43,8 +56,8 @@ class UserController extends Controller
             }
 
             // Sorting
-            $sortKey = $request->input('sort.key', 'id'); // default sort by id
-            $sortOrder = $request->input('sort.order', 'asc'); // default ascending
+            $sortKey = $request->input('sort.key', 'id');
+            $sortOrder = $request->input('sort.order', 'asc');
             $allowedSortColumns = ['id', 'name', 'username', 'email', 'created_at', 'updated_at'];
             $allowedSortOrder = ['asc', 'desc'];
 
@@ -60,11 +73,11 @@ class UserController extends Controller
 
             // Transform to location → department → role structure
             $data = $users->map(function ($user) {
-                $locations = $user->assignments->groupBy('location_id')->map(function($locationAssignments) {
+                $locations = $user->assignments->groupBy('location_id')->map(function ($locationAssignments) {
                     $location = $locationAssignments->first()->location;
-                    $departments = $locationAssignments->groupBy('department_id')->map(function($deptAssignments) {
+                    $departments = $locationAssignments->groupBy('department_id')->map(function ($deptAssignments) {
                         $department = $deptAssignments->first()->department;
-                        $roles = $deptAssignments->map(function($uldr) {
+                        $roles = $deptAssignments->map(function ($uldr) {
                             return [
                                 'id' => $uldr->role->id,
                                 'name' => $uldr->role->name,
@@ -110,6 +123,7 @@ class UserController extends Controller
     }
 
 
+
     /**
      * Store a newly created resource in storage.
      */
@@ -118,6 +132,7 @@ class UserController extends Controller
     {
         DB::beginTransaction();
         try {
+            $authUser = auth()->user();
             // 1️⃣ Create User
             $user = User::create([
                 'name'      => $request->name,
@@ -130,18 +145,14 @@ class UserController extends Controller
                 'password'  => Hash::make('password123'), // default
             ]);
 
+            // 2️⃣ Assign roles
             foreach ($request->userRoles as $roleBlock) {
-
                 foreach ($roleBlock['department'] as $deptBlock) {
-
                     foreach ($deptBlock['roles'] as $roleItem) {
                         $roleId = $roleItem['value'];
-
-                        // Assign role to user (Spatie)
                         $role = Role::find($roleId);
                         $user->assignRole($role);
 
-                        // Create ULDR
                         $uldr = UserLocationDepartmentRole::create([
                             'user_id'       => $user->id,
                             'location_id'   => $roleBlock['location_id'],
@@ -151,7 +162,6 @@ class UserController extends Controller
                             'position_type' => 'permanent',
                         ]);
 
-                        // Assign all default permissions of this role
                         foreach ($role->permissions as $perm) {
                             UserCustomPermission::create([
                                 'user_location_department_role_id' => $uldr->id,
@@ -161,6 +171,14 @@ class UserController extends Controller
                         }
                     }
                 }
+            }
+
+            $authLab = LabUser::where('user_id', $authUser->id)->first();
+            if ($authLab) {
+                LabUser::create([
+                    'user_id' => $user->id,
+                    'lab_id'  => $authLab->lab_id,
+                ]);
             }
 
             DB::commit();

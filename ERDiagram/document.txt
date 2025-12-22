@@ -1,0 +1,140 @@
++------------------+                     +-----------------------+
+|    documents     |                     | document_departments  |
++------------------+                     +-----------------------+
+| id (PK)          |1                  n | id (PK)               |
+| name             |-------------------->| document_id (FK)      |
+| category_id (FK) |                     | department_id (FK)    |
+| status           |                     | created_at            |
+| mode (create/upload)|                  | updated_at            |
+| created_at       |                     +-----------------------+
+| updated_at       |
+| deleted_at       |
++------------------+
+
+             1
+documents --------< (many)
+             
++--------------------------------------------------------------------------+
+|                           document_versions                              |
++--------------------------------------------------------------------------+
+| id (PK)                                                                  |
+| document_id (FK)                                                         |
+| major_version                                                            |
+| minor_version                                                            |
+| full_version                                                             |
+| number (unique)                                                          |
+| copy_no                                                                  |
+| quantity_prepared                                                        |
+| is_current (boolean)                                                     |
+| workflow_state (enum: draft/prepared/reviewed/approved/issued/effective) | -- only for mode=create
+| version_status (enum: active/superseded/obsolete)                        |
+| review_frequency                                                         |
+| notification_unit                                                        |
+| notification_value                                                       |
+| effective_date                                                           |
+| editor_schema (JSON)                                                     | -- only for mode=create
+| form_fields (JSON)                                                       | -- only for mode=create
+| schedule (JSON)                                                          |
+| created_at                                                               |
+| updated_at                                                               |
+| deleted_at                                                               |
++--------------------------------------------------------------------------+
+
+             1
+document_versions --------< (many)
+             
++--------------------------------------------+
+| document_version_templates                 | -- only for mode=create
++--------------------------------------------+
+| id (PK)                                    |
+| document_version_id (FK document_versions) |
+| template_id (FK templates)                 |
+| template_version_id (FK template_versions) |
+| type (enum: header/footer/other)           |
+| created_at                                 |
+| updated_at                                 |
++--------------------------------------------+
+
+             1
+document_versions --------< (many)
+             
++----------------------------------------+
+| document_version_amendments            |
++----------------------------------------+
+| id (PK)                                |
+| document_version_id (FK)               |
+| amendment_type (enum: major/minor)     |
+| amendment_number                        |
+| amendment_version                       |
+| amendment_reason                        |
+| amended_by (FK users)                   |
+| amendment_date                          |
+| created_at                              |
+| updated_at                              |
++----------------------------------------+
+
+             1
+document_versions --------< (many)
+             
++----------------------------------------+
+| document_version_lab_assignments       |
++----------------------------------------+
+| id (PK)                                |
+| document_version_id (FK)               |
+| lab_id (FK departments/labs)           |
+| apply_type (enum: all/new_labs)        |
+| apply_date                              |
+| effective_for_this_lab (boolean)        |
+| assigned_at                             |
++----------------------------------------+
+
+             1
+document_versions --------< (many)
+             
++-------------------------------+
+| document_workflow_logs        | -- only for mode=create
++-------------------------------+
+| id (PK)                       |
+| document_version_id (FK)      |
+| step_type (enum: prepared/reviewed/approved/issued/etc.)|
+| step_status (enum: pending/completed/sent_back/rejected)|
+| performed_by (FK users)       |
+| comments (text)               |
+| created_at                    |
++-------------------------------+
+
+             1
+document_versions --------< (many)
+             
++-------------------------------+
+| document_issues               |
++-------------------------------+
+| id (PK)                       |
+| document_version_id (FK)      |
+| issued_by (FK users)          |
+| issue_no                      |
+| issued_at                     |
+| created_at                    |
+| updated_at                    |
++-------------------------------+
+
+             1
+documents --------< (many)
+             \
+              \
+               \
+                1
+                 \
+                  \
+             +-----------------------------+
+             | document_history            |
+             +-----------------------------+
+             | id (PK)                     |
+             | document_id (FK)            |
+             | document_version_id (FK)    |
+             | changed_by (FK users)       |
+             | action                      |
+             | old_values (JSON)           |
+             | new_values (JSON)           |
+             | changed_at                  |
+             +-----------------------------+

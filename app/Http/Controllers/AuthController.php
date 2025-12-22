@@ -4,26 +4,11 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\LabUser;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class AuthController extends Controller
 {
-    // public function login(Request $request)
-    // {
-    //     $credentials = $request->only('email','password');
-
-    //     if(!$token = JWTAuth::attempt($credentials)){
-    //         return response()->json(['message'=>'Invalid credentials'], 401);
-    //     }
-
-    //     return response()->json([
-    //         'user'=> auth()->user(),
-    //         'token'=> $token,
-    //         // 'token_type'=> 'bearer',
-    //         // 'expires_in'=> auth()->factory()->getTTL() * 60
-    //     ]);
-    // }
-
     public function login(Request $request)
     {
         $credentials = $request->only('email','password');
@@ -34,6 +19,12 @@ class AuthController extends Controller
 
         $user = auth()->user();
 
+        $labUser = LabUser::with('lab')->where('user_id', $user->id)->first();
+        if ($labUser) {
+            $user->lab = $labUser->lab; // returns the whole lab object (id, name, etc.)
+        } else {
+            $user->lab = null;
+        }
         $user->load(['assignments.location.cluster.zone', 'assignments.department', 'assignments.role']);
 
         // If super admin -> do NOT build the hierarchy

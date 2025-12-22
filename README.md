@@ -43,7 +43,7 @@ cp .env.example .env
 Update `.env`:
 
 ```env
-APP_URL=http://192.168.1.33:8000
+APP_URL=http://192.168.1.26:8000
 
 DB_CONNECTION=pgsql
 DB_PORT=5433

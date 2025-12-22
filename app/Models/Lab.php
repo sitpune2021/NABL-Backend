@@ -27,7 +27,7 @@ class Lab extends Model
     }
 
 
-    public function locations()
+    public function location()
     {
         return $this->hasMany(LabLocation::class);
     }

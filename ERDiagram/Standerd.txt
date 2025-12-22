@@ -1,0 +1,86 @@
++-----------------------+
+|       standards       |
++-----------------------+
+| id (PK)               |
+| uuid (unique)         | <-- same for all versions of the same standard
+| name                  |
+| description           |
+| version_major         |
+| version_minor         |
+| changes_type          | minor / major
+| status                | draft / published / expired
+| is_current            | boolean
+| created_by (FK users) |
+| created_at            |
+| updated_at            |
++-----------------------+
+
+        1
+        |
+        | N
++-----------------------+
+|        clauses        |
++-----------------------+
+| id (PK)               |
+| standard_id (FK)      | <-- links to specific standard version
+| parent_id (FK nullable)| <-- self-reference for nested clauses
+| title                 |
+| message               |
+| note                  | boolean
+| is_child              | boolean
+| numbering_type        | numerical / alphabetical / roman / dot
+| numbering_value       |
+| sort_order            |
+| created_at            |
+| updated_at            |
++-----------------------+
+
+        1
+        |
+        | N
++-----------------------+
+|     clause_versions   |
++-----------------------+
+| id (PK)               |
+| clause_id (FK)        | <-- original clause
+| standard_id (FK)      | <-- version it belongs to
+| title                 |
+| message               |
+| numbering_type        |
+| numbering_value       |
+| version_major         |
+| version_minor         |
+| change_type           | added / modified / deleted
+| created_at            |
++-----------------------+
+
+        1
+        |
+        | N
++-----------------------+
+|     draft_sessions    |
++-----------------------+
+| id (PK)               |
+| uuid                  | unique draft identifier
+| standard_id (FK)      | belongs to which standard version
+| section_number        | for partial drafts
+| status                | draft / partial / completed
+| created_by (FK users) |
+| created_at            |
+| updated_at            |
++-----------------------+
+
++-----------------------+
+|        users          |
++-----------------------+
+| id (PK)               |
+| name                  |
+| email                 |
+| password              |
+| role                  | admin/editor/viewer
+| created_at            |
+| updated_at            |
++-----------------------+
+
+
+standerd ER Diagram
