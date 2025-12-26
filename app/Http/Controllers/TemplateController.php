@@ -23,10 +23,11 @@ class TemplateController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                      ->orWhere('type', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(type) LIKE ?', ["%{$search}%"]);
                 });
             }
 

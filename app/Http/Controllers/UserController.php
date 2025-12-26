@@ -40,18 +40,19 @@ class UserController extends Controller
                 // Filter users by the same lab
                 $query->whereIn('id', function ($q) use ($labUser) {
                     $q->select('user_id')
-                    ->from('lab_users')
-                    ->where('lab_id', $labUser->lab_id);
+                        ->from('lab_users')
+                        ->where('lab_id', $labUser->lab_id);
                 });
             }
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('username', 'LIKE', "%{$search}%")
-                    ->orWhere('email', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(username) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(email) LIKE ?', ["%{$search}%"]);
                 });
             }
 
