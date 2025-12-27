@@ -33,6 +33,23 @@ class LocationController extends Controller
                 });
             }
 
+            if ($request->filled('zones')) {
+                $zones = $request->input('zones'); // [4, 6, 7]
+
+                $query->whereHas('zone', function ($q) use ($zones) {
+                    $q->whereIn('id', $zones);
+                });
+            }
+
+            if ($request->filled('clusters')) {
+                $clusters = $request->input('clusters');
+
+                $query->whereHas('cluster', function ($q) use ($clusters) {
+                    $q->whereIn('id', $clusters);
+                });
+            }
+
+
             // Sorting
             $sortKey = $request->input('sort.key', 'id'); // default sort by id
             $sortOrder = $request->input('sort.order', 'asc'); // default ascending
