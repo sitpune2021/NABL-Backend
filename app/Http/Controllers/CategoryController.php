@@ -18,10 +18,10 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-               $user = auth()->user();
+            $user = auth()->user();
 
         // Check if user is a lab user
-        $labUser = LabUser::where('user_id', $user->id)->first();
+            $labUser = LabUser::where('user_id', $user->id)->first();
             $query = Category::query();
 
             if ($labUser) {

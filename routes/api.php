@@ -15,7 +15,6 @@ use App\Http\Controllers\ClusterController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
-use App\Http\Controllers\DocumentEditorController;
 use App\Http\Controllers\LabController;
 use App\Http\Controllers\StandardController;
 use App\Http\Controllers\ClauseDocumentLinkController;
@@ -25,7 +24,8 @@ Route::apiResource('navigation-items', NavigationItemController::class);
 
 Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('document', DocumentController::class);
-    Route::apiResource('document-editor', DocumentEditorController::class);
+    Route::post('/data-entry', [DocumentController::class, 'dataEntry']);
+    Route::get('/data-entry/{id}', [DocumentController::class, 'getDataEntriesByDocument']);
     Route::post('/sign-out', [AuthController::class,'logout']);
     Route::get('/access-modules', [NavigationItemController::class, 'accessModules']);
     Route::apiResource('user', UserController::class);
@@ -43,5 +43,5 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('standard', StandardController::class);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);
     Route::get('/standards/current', [StandardController::class, 'currentStandards']);
-
+    
 });

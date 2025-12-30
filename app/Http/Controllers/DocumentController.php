@@ -14,6 +14,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\Auth;
+use App\Models\LabDocumentsEntryData;
+use App\Models\LabUser;
 
 class DocumentController extends Controller
 {
@@ -23,7 +26,17 @@ class DocumentController extends Controller
     public function index(Request $request)
     {
         try {
+            $user = auth()->user();
+            $labUser = LabUser::where('user_id', $user->id)->first();
             $query = Document::with('currentVersion', 'category');
+
+            if ($labUser) {
+                $query->whereIn('id', function($q) use ($labUser) {
+                    $q->select('document_id')
+                    ->from('lab_clause_documents')
+                    ->where('lab_id', $labUser->lab_id); // Only for this lab
+                });
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -82,7 +95,7 @@ class DocumentController extends Controller
             'name' => 'required|string|max:255',
             'status' => 'required|in:controlled,uncontrolled',
             'copy_no' => 'nullable|string|max:50',
-            'quantity_prepared' => 'nullable|integer|min:0',
+            'quantity_prepared' => 'nullable|min:0',
             'effective_date' => 'nullable|date',
             'schedule' => 'nullable|array',
             'review_frequency' => 'nullable|string',
@@ -184,6 +197,17 @@ class DocumentController extends Controller
                     'performed_by' => $user?->id,
                     'comments' => 'Initial workflow step',
                     'created_at' => $request->performed_date ?? now(),
+                ]);
+            }
+
+            $authUser = auth()->user();
+            $labUser = LabUser::where('user_id', $authUser->id)->first();
+
+            if ($labUser) {
+                LabDocuments::create([
+                    'user_id' => $labUser->user_id,
+                    'lab_id' => $labUser->lab_id,
+                    'document_version_id' => $version->id,
                 ]);
             }
 
@@ -439,5 +463,136 @@ class DocumentController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function dataEntry(Request $request)
+    {
+        $validated = $request->validate([
+            'document_id' => 'required|exists:documents,id',
+            'fields_entry' => 'required|array',
+        ]);
+
+        $authUser = Auth::user();
+
+        $labUser = LabUser::where('user_id', $authUser->id)->first();
+
+        if (!$labUser) {
+            return response()->json([
+                'message' => 'Lab user not found.'
+            ], 404);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $document = Document::with('currentVersion')->findOrFail($validated['document_id']);
+
+            $fieldsEntry = $validated['fields_entry'];
+
+            // Handle file upload only if document mode is not 'create' and file exists
+            if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
+                $file = $request->file('fields_entry.document');
+
+                // Generate unique filename
+                $filename = time() . '_' . $file->getClientOriginalName();
+
+                // Store file in storage/app/private/documents
+                $file->storeAs('documents', $filename, 'private');
+
+                // Replace file object with filename
+                $fieldsEntry['document'] = $filename;
+            }
+
+            // Create LabDocumentsEntryData
+            $entry = LabDocumentsEntryData::create([
+                'user_id' => $labUser->user_id,
+                'lab_id' => $labUser->lab_id,
+                'document_id' => $validated['document_id'],
+                'document_version_id' => $document->currentVersion?->id ?? $validated['document_id'],
+                'fields_entry' => json_encode($fieldsEntry),
+            ]);
+
+            DB::commit(); // Commit transaction
+
+            return response()->json([
+                'message' => 'Data entry saved successfully',
+                'data' => $entry
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack(); // Rollback if any error occurs
+
+            return response()->json([
+                'message' => 'Failed to save data entry',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function getDataEntriesByDocument($id)
+    {
+        $authUser = Auth::user();
+
+        $labUser = LabUser::where('user_id', $authUser->id)->first();
+
+        if (!$labUser) {
+            return response()->json([
+                'message' => 'Lab not found for this user'
+            ], 404);
+        }
+
+        $document = Document::with('currentVersion')->findOrFail($id);
+        $version = $document->currentVersion;
+
+        $entries = LabDocumentsEntryData::where('lab_id', $labUser->lab_id)
+            ->where('document_id', $id)
+            ->with(['document', 'documentVersion', 'user'])
+            ->get();
+
+        // 🔹 Determine headers
+        if ($document->mode === 'create' && $version?->form_fields) {
+            $headers = array_keys($version->form_fields);
+        } else {
+            $headers = ['document']; // For file upload mode
+        }
+
+        // 🔹 Build rows
+        $rows = $entries->map(function ($entry) use ($headers) {
+            $fields = $entry->fields_entry;
+
+            if (is_string($fields)) {
+                $fields = json_decode($fields, true) ?? [];
+            }
+
+            if (!is_array($fields)) {
+                $fields = [];
+            }
+
+            $values = collect($headers)->map(function ($key) use ($fields) {
+                $value = $fields[$key] ?? null;
+
+                // Handle array values (checkbox/multiselect)
+                if (is_array($value)) {
+                    return collect($value)->implode(', ');
+                }
+
+                return $value;
+            });
+
+            return [
+                'id' => $entry->id,
+                'document_name' => optional($entry->document)->name,
+                'document_version' => optional($entry->documentVersion)->version,
+                'user' => optional($entry->user)->name,
+                'values' => $values,
+                'created_at' => $entry->created_at->toDateTimeString(),
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Data entries fetched successfully',
+            'headers' => $headers,
+            'rows' => $rows
+        ], 200);
     }
 }

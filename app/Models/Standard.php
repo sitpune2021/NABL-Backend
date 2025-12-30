@@ -14,10 +14,6 @@ class Standard extends Model
         'changes_type','status','is_current','created_by'
     ];
 
-    // public function clauses() {
-    //     return $this->hasMany(Clause::class);
-    // }
-
     public function drafts() {
         return $this->hasMany(DraftSession::class);
     }
@@ -25,7 +21,6 @@ class Standard extends Model
     public function creator() {
         return $this->belongsTo(User::class, 'created_by');
     }
-
 
     public function clauses()
     {
