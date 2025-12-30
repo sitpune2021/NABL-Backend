@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
 use App\Models\LabDocumentsEntryData;
 use App\Models\LabUser;
+use Illuminate\Support\Facades\Storage;
 
 class DocumentController extends Controller
 {
@@ -28,7 +29,7 @@ class DocumentController extends Controller
         try {
             $user = auth()->user();
             $labUser = LabUser::where('user_id', $user->id)->first();
-            $query = Document::with('currentVersion', 'category');
+            $query = Document::with('currentVersion.workflowLogs', 'category');
 
             if ($labUser) {
                 $query->whereIn('id', function($q) use ($labUser) {
@@ -155,10 +156,10 @@ class DocumentController extends Controller
                 'review_frequency' => $request->review_frequency,
                 'notification_unit' => $request->notification_unit,
                 'notification_value' => $request->notification_value,
+                'workflow_state' => $request->workflow_state,
             ];
 
             if ($request->mode === 'create') {
-                $versionData['workflow_state'] = $request->workflow_state ?? 'draft';
                 $versionData['editor_schema'] = $request->editor_schema;
                 $versionData['form_fields'] = $request->form_fields;
             }
@@ -497,7 +498,7 @@ class DocumentController extends Controller
                 $filename = time() . '_' . $file->getClientOriginalName();
 
                 // Store file in storage/app/private/documents
-                $file->storeAs('documents', $filename, 'private');
+                $file->storeAs('documents', $filename, 'public');
 
                 // Replace file object with filename
                 $fieldsEntry['document'] = $filename;
@@ -570,6 +571,9 @@ class DocumentController extends Controller
 
             $values = collect($headers)->map(function ($key) use ($fields) {
                 $value = $fields[$key] ?? null;
+                if ($key === 'document' && $value) {
+                    $value = Storage::disk('public')->url('documents/' . $value);
+                }
 
                 // Handle array values (checkbox/multiselect)
                 if (is_array($value)) {
