@@ -29,14 +29,17 @@ class LocationController extends Controller
                         ->orWhereRaw('LOWER(short_name) LIKE ?', ["%{$search}%"])
                         ->orWhereHas('cluster', function ($q2) use ($search) {
                             $q2->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
-                        });
+                        })
+                        ->orWhereHas('cluster.zone', function ($q3) use ($search) {
+                            $q3->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
+                        }); 
                 });
             }
 
             if ($request->filled('zones')) {
-                $zones = $request->input('zones'); // [4, 6, 7]
+                $zones = $request->input('zones');
 
-                $query->whereHas('zone', function ($q) use ($zones) {
+                $query->whereHas('cluster.zone', function ($q) use ($zones) {
                     $q->whereIn('id', $zones);
                 });
             }
@@ -72,7 +75,6 @@ class LocationController extends Controller
                 'data' => $locations->items(),
                 'total' => $locations->total()
             ], 200);
-
         } catch (Exception $e) {
             return response()->json([
                 'status' => false,
@@ -111,7 +113,6 @@ class LocationController extends Controller
                 'success' => true,
                 'data' => $cluster
             ], 201);
-
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -180,7 +181,6 @@ class LocationController extends Controller
                 'success' => true,
                 'data' => $cluster
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -212,7 +212,6 @@ class LocationController extends Controller
                 'success' => true,
                 'message' => 'Location deleted successfully'
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

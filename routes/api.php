@@ -14,6 +14,7 @@ use App\Http\Controllers\ZoneController;
 use App\Http\Controllers\ClusterController;
 use App\Http\Controllers\LocationController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\AuthProfileController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\DocumentEditorController;
 use App\Http\Controllers\LabController;
@@ -43,5 +44,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('standard', StandardController::class);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);
     Route::get('/standards/current', [StandardController::class, 'currentStandards']);
+    
+    Route::get('/profile/me', [AuthProfileController::class, 'show']);
+    Route::put('/profile/update', [AuthProfileController::class, 'update']);
 
 });
