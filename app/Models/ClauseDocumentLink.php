@@ -24,21 +24,16 @@ class ClauseDocumentLink extends Model
         return $this->belongsTo(Clause::class);
     }
 
-    public function document()
-    {
-        return $this->belongsTo(Document::class);
-    }
-
     public function documentVersion()
     {
         return $this->belongsTo(DocumentVersion::class);
     }
 
-    
-    // public function document()
-    // {
-    //     return $this->belongsTo(Document::class, 'document_id', 'id');
-    // }
+
+    public function document()
+    {
+        return $this->belongsTo(Document::class, 'document_id');
+    }
 
     // public function clause()
     // {

@@ -36,4 +36,10 @@ class Lab extends Model
     {
         return $this->belongsToMany(User::class, 'lab_users');
     }
+
+    public function labClauseDocuments()
+    {
+        return $this->hasMany(LabClauseDocument::class, 'lab_id');
+    }
+
 }
