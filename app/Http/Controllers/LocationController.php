@@ -21,16 +21,37 @@ class LocationController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%")
-                    ->orWhere('short_name', 'LIKE', "%{$search}%")
-                    ->orWhereHas('cluster', function ($q2) use ($search) {
-                        $q2->where('name', 'LIKE', "%{$search}%");
-                    });
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(short_name) LIKE ?', ["%{$search}%"])
+                        ->orWhereHas('cluster', function ($q2) use ($search) {
+                            $q2->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
+                        })
+                        ->orWhereHas('cluster.zone', function ($q3) use ($search) {
+                            $q3->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
+                        }); 
                 });
             }
+
+            if ($request->filled('zones')) {
+                $zones = $request->input('zones');
+
+                $query->whereHas('cluster.zone', function ($q) use ($zones) {
+                    $q->whereIn('id', $zones);
+                });
+            }
+
+            if ($request->filled('clusters')) {
+                $clusters = $request->input('clusters');
+
+                $query->whereHas('cluster', function ($q) use ($clusters) {
+                    $q->whereIn('id', $clusters);
+                });
+            }
+
 
             // Sorting
             $sortKey = $request->input('sort.key', 'id'); // default sort by id
@@ -54,7 +75,6 @@ class LocationController extends Controller
                 'data' => $locations->items(),
                 'total' => $locations->total()
             ], 200);
-
         } catch (Exception $e) {
             return response()->json([
                 'status' => false,
@@ -93,7 +113,6 @@ class LocationController extends Controller
                 'success' => true,
                 'data' => $cluster
             ], 201);
-
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -112,7 +131,7 @@ class LocationController extends Controller
         try {
             $cluster = Location::with(['cluster', 'cluster.zone'])->findOrFail($id);
             $formattedCluster = [
-                ...$cluster->toArray(),   
+                ...$cluster->toArray(),
                 'zone_id'    => $cluster->cluster->zone->id ?? null,
             ];
             return response()->json([
@@ -141,7 +160,7 @@ class LocationController extends Controller
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|required|string|max:255|unique:locations,name,' . $id,
             'identifier' => 'sometimes|required|string|max:255|unique:locations,identifier,' . $id,
-            'short_name' => 'required|string|max:255|unique:locations,short_name,'. $id,
+            'short_name' => 'required|string|max:255|unique:locations,short_name,' . $id,
             'cluster_id' => 'sometimes|required|exists:clusters,id',
         ]);
 
@@ -162,7 +181,6 @@ class LocationController extends Controller
                 'success' => true,
                 'data' => $cluster
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -194,7 +212,6 @@ class LocationController extends Controller
                 'success' => true,
                 'message' => 'Location deleted successfully'
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

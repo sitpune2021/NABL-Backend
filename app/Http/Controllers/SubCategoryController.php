@@ -29,25 +29,26 @@ class SubCategoryController extends Controller
                 $query->whereHas('category', function ($q) use ($labUser) {
                     $q->whereIn('id', function ($subQuery) use ($labUser) {
                         $subQuery->select('category_id')
-                                ->from('documents')
-                                ->whereIn('id', function ($q2) use ($labUser) {
-                                    $q2->select('document_id')
-                                        ->from('lab_clause_documents')
-                                        ->where('lab_id', $labUser->lab_id);
-                                });
+                            ->from('documents')
+                            ->whereIn('id', function ($q2) use ($labUser) {
+                                $q2->select('document_id')
+                                    ->from('lab_clause_documents')
+                                    ->where('lab_id', $labUser->lab_id);
+                            });
                     });
                 });
             }
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%")
-                    ->orWhereHas('category', function ($q2) use ($search) {
-                        $q2->where('name', 'LIKE', "%{$search}%");
-                    });
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"])
+                        ->orWhereHas('category', function ($q2) use ($search) {
+                            $q2->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
+                        });
                 });
             }
 
@@ -215,7 +216,7 @@ class SubCategoryController extends Controller
                 'success' => true,
                 'message' => 'Sub Category deleted successfully'
             ], 200);
-
+            
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

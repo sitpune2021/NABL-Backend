@@ -21,13 +21,13 @@ class InstrumentController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('short_name', 'LIKE', "%{$search}%")
-                    ->orWhere('serial_no', 'LIKE', "%{$search}%")
-                    ->orWhere('manufacturer', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(short_name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(serial_no) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(manufacturer) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"]);
                 });
             }
 
@@ -191,7 +191,7 @@ class InstrumentController extends Controller
                 'success' => true,
                 'message' => 'Instrument deleted successfully'
             ], 200);
-
+            
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
