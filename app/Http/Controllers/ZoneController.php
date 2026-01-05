@@ -21,10 +21,11 @@ class ZoneController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"]);
                 });
             }
 
@@ -183,7 +184,7 @@ class ZoneController extends Controller
                 'success' => true,
                 'message' => 'Zone deleted successfully'
             ], 200);
-
+            
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

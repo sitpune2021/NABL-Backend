@@ -21,10 +21,10 @@ class DepartmentController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"]);
                 });
             }
 
@@ -51,7 +51,6 @@ class DepartmentController extends Controller
                 'data' => $categories->items(),
                 'total' => $categories->total()
             ], 200);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -87,7 +86,6 @@ class DepartmentController extends Controller
                 'success' => true,
                 'data' => $department
             ], 201);
-
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -150,7 +148,6 @@ class DepartmentController extends Controller
                 'success' => true,
                 'data' => $department
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -182,7 +179,6 @@ class DepartmentController extends Controller
                 'success' => true,
                 'message' => 'Department deleted successfully'
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

@@ -21,13 +21,21 @@ class ClusterController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%")
-                    ->orWhereHas('zone', function ($q2) use ($search) {
-                        $q2->where('name', 'LIKE', "%{$search}%");
-                    });
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"])
+                        ->orWhereHas('zone', function ($q2) use ($search) {
+                            $q2->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
+                        });
+                });
+            }
+
+            if ($request->filled('zones')) {
+                $zones = $request->input('zones'); // [4, 6, 7]
+
+                $query->whereHas('zone', function ($q) use ($zones) {
+                    $q->whereIn('id', $zones);
                 });
             }
 

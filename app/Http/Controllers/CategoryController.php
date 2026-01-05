@@ -20,28 +20,28 @@ class CategoryController extends Controller
         try {
             $user = auth()->user();
 
-        // Check if user is a lab user
+            // Check if user is a lab user
             $labUser = LabUser::where('user_id', $user->id)->first();
             $query = Category::query();
 
             if ($labUser) {
                 $query->whereIn('id', function($subQuery) use ($labUser) {
                     $subQuery->select('category_id')
-                            ->from('documents')
-                            ->whereIn('id', function($q) use ($labUser) {
-                                $q->select('document_id')
+                        ->from('documents')
+                        ->whereIn('id', function($q) use ($labUser) {
+                            $q->select('document_id')
                                 ->from('lab_clause_documents')
                                 ->where('lab_id', $labUser->lab_id); // Only for this lab
-                            });
+                        });
                 });
             }
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%")
-                    ->orWhere('identifier', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(identifier) LIKE ?', ["%{$search}%"]);
                 });
             }
 
@@ -68,7 +68,6 @@ class CategoryController extends Controller
                 'data' => $categories->items(),
                 'total' => $categories->total()
             ], 200);
-
         } catch (Exception $e) {
             return response()->json([
                 'success' => false,
@@ -105,7 +104,6 @@ class CategoryController extends Controller
                 'success' => true,
                 'data' => $category
             ], 201);
-
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -168,7 +166,6 @@ class CategoryController extends Controller
                 'success' => true,
                 'data' => $category
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -200,7 +197,6 @@ class CategoryController extends Controller
                 'success' => true,
                 'message' => 'Category deleted successfully'
             ], 200);
-
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([

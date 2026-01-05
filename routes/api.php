@@ -18,7 +18,8 @@ use App\Http\Controllers\{
     DocumentController,
     LabController,
     StandardController,
-    ClauseDocumentLinkController
+    ClauseDocumentLinkController,
+    AuthProfileController
 };
 
 // Public routes
@@ -49,4 +50,6 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('standards', StandardController::class);
     Route::get('/standards-current', [StandardController::class, 'currentStandards']);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);
+    Route::get('/profile/me', [AuthProfileController::class, 'show']);
+    Route::put('/profile/update', [AuthProfileController::class, 'update']);
 });

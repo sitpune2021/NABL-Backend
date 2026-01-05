@@ -21,9 +21,10 @@ class UnitController extends Controller
 
             // Search
             if ($request->filled('query')) {
-                $search = $request->input('query');
+                $search = strtolower($request->input('query'));
+
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'LIKE', "%{$search}%");
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
                 });
             }
 
@@ -179,7 +180,7 @@ class UnitController extends Controller
                 'success' => true,
                 'message' => 'Unit deleted successfully'
             ], 200);
-
+            
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
