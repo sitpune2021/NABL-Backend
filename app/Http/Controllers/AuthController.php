@@ -6,41 +6,42 @@ use Illuminate\Http\Request;
 use App\Models\User;
 use App\Models\LabUser;
 use Tymon\JWTAuth\Facades\JWTAuth;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
     public function login(Request $request)
     {
-        $credentials = $request->only('email','password');
+        $request->validate([
+            'email'    => 'required|email',
+            'password' => 'required|string',
+        ]);
 
-        if(!$token = JWTAuth::attempt($credentials)){
-            return response()->json(['message'=>'Invalid credentials'], 401);
+        if (!$token = JWTAuth::attempt($request->only('email', 'password'))) {
+            Log::warning('Failed login attempt', ['email' => $request->email, 'ip' => $request->ip()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid credentials'
+            ], 401);
         }
 
         $user = auth()->user();
 
         $labUser = LabUser::with('lab')->where('user_id', $user->id)->first();
-        if ($labUser) {
-            $user->lab = $labUser->lab; // returns the whole lab object (id, name, etc.)
-        } else {
-            $user->lab = null;
-        }
+        $user->lab = $labUser ? $labUser->lab : null;
         $user->load(['assignments.location.cluster.zone', 'assignments.department', 'assignments.role']);
 
-        // If super admin -> do NOT build the hierarchy
         if ($user->is_super_admin) {
-            $user->roles_structure = [];   // Or null
+            $user->roles_structure = [];
         } else {
-            $rolesStructure = $user->assignments
+            $user->roles_structure = $user->assignments
                 ->groupBy('location_id')
                 ->map(function ($locationGroup) {
-
                     $first = $locationGroup->first();
-
                     $departments = $locationGroup
                         ->groupBy('department_id')
-                        ->map(function($deptGroup) {
-                            $roles = $deptGroup->map(function($assign) {
+                        ->map(function ($deptGroup) {
+                            $roles = $deptGroup->map(function ($assign) {
                                 return [
                                     'role_id'   => $assign->role->id,
                                     'role_name' => $assign->role->name
@@ -50,53 +51,65 @@ class AuthController extends Controller
                             return [
                                 'department_id'   => $deptGroup->first()->department->id,
                                 'department_name' => $deptGroup->first()->department->name,
-                                'roles' => $roles
+                                'roles'           => $roles
                             ];
                         })->values();
 
                     return [
                         'location_id'   => $first->location->id,
                         'location_name' => $first->location->name,
-
                         'cluster_id'    => $first->location->cluster->id,
                         'cluster_name'  => $first->location->cluster->name,
-
                         'zone_id'       => $first->location->cluster->zone->id,
                         'zone_name'     => $first->location->cluster->zone->name,
-
                         'departments'   => $departments
                     ];
                 })->values();
-
-            $user->roles_structure = $rolesStructure;
         }
 
+        $user->makeHidden(['password', 'remember_token']);
+
+        Log::info('User logged in', ['user_id' => $user->id, 'ip' => $request->ip()]);
+
         return response()->json([
-            'user'  => $user,
-            'token' => $token
+            'success' => true,
+            'user'    => $user,
+            'roles'   => $user->getRoleNames(),       // Spatie roles
+            'permissions' => $user->getAllPermissions()->pluck('name'), // Spatie permissions
+            'token'   => $token
         ]);
     }
 
 
     public function logout()
     {
-        JWTAuth::invalidate(JWTAuth::getToken());
-        return response()->json(['message'=>'Logged out successfully']);
+        try {
+            JWTAuth::invalidate(JWTAuth::getToken());
+            Log::info('User logged out', ['user_id' => auth()->id()]);
+            return response()->json(['success' => true, 'message' => 'Logged out successfully']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Token invalid or expired'], 400);
+        }
     }
 
-     public function refresh()
+    public function refresh()
     {
-        $token = JWTAuth::refresh(JWTAuth::getToken());
-
-        return response()->json([
-            'token'=> $token,
-            // 'token_type'=> 'bearer',
-            // 'expires_in'=> auth()->factory()->getTTL() * 60
-        ]);
+        try {
+            $token = JWTAuth::refresh(JWTAuth::getToken());
+            Log::info('Token refreshed', ['user_id' => auth()->id()]);
+            return response()->json([
+                'success' => true,
+                'token'   => $token
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Unable to refresh token'], 400);
+        }
     }
 
     public function profile()
     {
-        return response()->json(auth()->user());
+        $user = auth()->user();
+        $user->makeHidden(['password', 'remember_token']);
+        return response()->json(['success' => true, 'user' => $user]);
     }
 }

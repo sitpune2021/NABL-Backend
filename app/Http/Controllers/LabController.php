@@ -3,7 +3,22 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\{Lab, LabLocation, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole, LabClauseDocument};
+use App\Models\{Lab, 
+    LabLocation, 
+    LabLocationDepartment, 
+    LabUser, 
+    Contact, 
+    User, 
+    UserLocationDepartmentRole, 
+    LabClauseDocument, 
+    Document,
+    DocumentDepartment,
+    DocumentVersion,
+    DocumentVersionTemplate,
+    DocumentVersionWorkflowLog,
+    LabDocumentsEntryData,
+    Template,
+    LabDocuments};
 use Illuminate\Support\Facades\{DB, Hash};
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
@@ -110,6 +125,7 @@ class LabController extends Controller
                     'address' => $loc['address'] ?? null,
                 ]);
 
+
                 // Location Contacts
                 foreach ($loc['emails'] ?? [] as $email) {
                     $labLocation->contacts()->create([
@@ -151,13 +167,12 @@ class LabController extends Controller
                     if ($departmentId) {
                         $this->assignULDR(
                             $admin->id,
-                            $labLocation->id,
+                            $loc['location_name'],
                             $departmentId,
                             Role::where('name', 'Admin')->first()->id
                         );
                     }
                 }
-
                 // Departments
                 foreach ($loc['departments'] ?? [] as $dept) {
                     LabLocationDepartment::create([
@@ -200,6 +215,20 @@ class LabController extends Controller
                 LabClauseDocument::insert($records);
             }
 
+        if (!empty($request->documents)) {
+                foreach ($request->documents as $documentId) {
+                    $originalDocument = Document::with([
+                        'versions.templates',
+                        'versions.workflowLogs',
+                        'departments'
+                    ])->find($documentId);
+
+                    if ($originalDocument) {
+                        $this->cloneDocumentForLab($originalDocument, $lab);
+                    }
+                }
+            }
+
             DB::commit();
             return response()->json(['message' => 'Lab created successfully', 'lab_id' => $lab->id], 201);
 
@@ -208,6 +237,77 @@ class LabController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+
+
+    protected function cloneDocumentForLab(Document $original, Lab $lab)
+{
+    // 1. Clone document
+    $newDocument = $original->replicate();
+    $newDocument->owner_type = 'lab';
+    $newDocument->owner_id = $lab->id;
+    $newDocument->save();
+
+    // 2. Clone departments
+    foreach ($original->departments as $dept) {
+        DocumentDepartment::create([
+            'document_id' => $newDocument->id,
+            'department_id' => $dept->id,
+        ]);
+    }
+
+    // 3. Clone versions (all fields)
+    foreach ($original->versions as $version) {
+        $baseNumber = preg_replace('/-\d+$/', '', $version->number); // remove trailing -number
+        $suffix = 1;
+
+        while (DocumentVersion::where('number', $baseNumber . '-' . $suffix)->exists()) {
+            $suffix++;
+        }
+
+        $newNumber = $baseNumber . '-' . $suffix;
+
+        $newVersion = $version->replicate();
+        $newVersion->document_id = $newDocument->id;
+        $newVersion->number = $newNumber; // set new unique number
+        $newVersion->is_current = true;
+        $newVersion->save();
+
+        // templates
+        foreach ($version->templates as $template) {
+            dd($template);
+            DocumentVersionTemplate::create([
+                'document_version_id' => $newVersion->id,
+                'template_id' => $template->template_id,
+                'template_version_id' => $template->template_version_id,
+                'type' => $template->type,
+            ]);
+        }
+
+        // workflow logs
+        foreach ($version->workflowLogs as $log) {
+            DocumentVersionWorkflowLog::create([
+                'document_version_id' => $newVersion->id,
+                'step_type' => $log->step_type,
+                'step_status' => $log->step_status,
+                'performed_by' => $log->performed_by,
+                'comments' => $log->comments,
+                'created_at' => $log->created_at,
+                'updated_at' => $log->updated_at,
+            ]);
+        }
+
+        // lab documents tracking
+        $authUser = auth()->user();
+
+        LabDocuments::create([
+            'user_id' => $authUser->id ?? null,
+            'lab_id' => $lab->id,
+            'document_version_id' => $newVersion->id,
+        ]);
+    }
+
+    return $newDocument;
+}
 
     /**
      * Display the specified lab.
