@@ -13,7 +13,9 @@ class Document extends Model
         'name',
         'category_id',
         'status',
-        'mode'
+        'mode',
+        'owner_type',
+        'owner_id'
     ];
 
     public function category()

@@ -14,22 +14,22 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-        $roles = Role::with('users')->get()->map(function ($role) {
-            return [
-                'id' => $role->id,
-                'name' => $role->name,
-                'description' => $role->description,
-                'accessRight' => $this->formatPermissions($role->permissions->pluck('name')->toArray()),
-                'users' => $role->users->map(function ($user) {
-                    return [
+            $roles = Role::with('users')->get()->map(function ($role) {
+                return [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'description' => $role->description,
+                    'accessRight' => $this->formatPermissions($role->permissions->pluck('name')->toArray()),
+                    'users' => $role->users->map(function ($user) {
+                        return [
                         'id' => $user->id,
                         'name' => $user->name,
                         'email' => $user->email,
-                        // add other user fields as needed
-                    ];
-                }),
-            ];
-        });
+                            // add other user fields as needed
+                        ];
+                    }),
+                ];
+            });
 
         return response()->json($roles);
     }
@@ -192,27 +192,7 @@ class RolePermissionsController extends Controller
         }
         return $accessRight;
     }
-
-    protected function preparePermissions(array $accessRight): array
-    {
-        $permissions = [];
-
-        foreach ($accessRight as $module => $actions) {
-            foreach ($actions as $action) {
-                $permissions[] = $module . '.' . $action;
-            }
-        }
-
-        return $permissions;
-    }
-
-    // Helper: Create permissions if they don't exist
-    protected function createPermissionsIfNotExist(array $permissions)
-    {
-        foreach ($permissions as $permissionName) {
-            Permission::firstOrCreate(['name' => $permissionName]);
-        }
-    }
+    
 
     private function getAccessModules()
     {

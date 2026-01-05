@@ -17,14 +17,14 @@ return new class extends Migration
             $table->foreignId('category_id')->constrained(); // reference to categories
             $table->enum('status', ['controlled', 'uncontrolled'])->default('controlled');
             $table->enum('mode', ['create', 'upload'])->default('create');
+            $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
+            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
             $table->timestamps();
             $table->softDeletes();
+            $table->index(['owner_type', 'owner_id']);
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('documents');

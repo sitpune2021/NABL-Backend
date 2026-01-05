@@ -18,37 +18,71 @@ class RolePermissionSeeder extends Seeder
     public function run(): void
     {
     
+        $this->seedPermissions();
+
+        $this->seedMasterRoles();
+
+        $this->command->info('✅ Master roles seeded with COMMON permission logic.');
+    }
+
+    private function seedPermissions(): void
+    {
         $modules = $this->getAccessModules();
 
         foreach ($modules as $module) {
             foreach ($module['accessor'] as $perm) {
-                $permissionName = $module['key'] . '.' . $perm['value']; 
-                Permission::firstOrCreate(['name' => $permissionName]);
+                Permission::firstOrCreate([
+                    'name' => $module['key'] . '.' . $perm['value'],
+                ]);
             }
         }
+    }
 
-    
-        $superAdmin = Role::firstOrCreate(['name' => 'Super Admin']);
-        $admin      = Role::firstOrCreate(['name' => 'Admin']);
-        $manager    = Role::firstOrCreate(['name' => 'Manager']);
-        $user       = Role::firstOrCreate(['name' => 'User']);
+     private function seedMasterRoles(): void
+    {
+        $roles = [
+            ['name' => 'Super Admin', 'description' => 'Super Admin',  'level' => 1],
+            ['name' => 'Admin',       'description' => 'Admin',        'level' => 2],
+            ['name' => 'Manager',     'description' => 'Manager',      'level' => 3],
+            ['name' => 'User',        'description' => 'User',      'level' => 4],
+        ];
 
-   
-        $superAdmin->syncPermissions(Permission::all());
+        foreach ($roles as $roleData) {
 
-   
-        $admin->syncPermissions(Permission::all());
+            $role = Role::firstOrCreate(
+                [
+                    'name' => $roleData['name'],
+                    'description' => $roleData['description'],
+                    'lab_id' => null, // MASTER LEVEL
+                ],
+                [
+                    'level' => $roleData['level'],
+                ]
+            );
 
-        $managerPermissions = Permission::where(function ($q) {
-            $q->where('name', 'like', "%.list")
-              ->orWhere('name', 'like', "%.write");
-        })->get();
-        $manager->syncPermissions($managerPermissions);
+            // SAME OLD PERMISSION ASSIGNMENT LOGIC
+            match ($roleData['name']) {
 
-        $userPermissions = Permission::where('name', 'like', "%.list")->get();
-        $user->syncPermissions($userPermissions);
+                'Super Admin' =>
+                    $role->syncPermissions(Permission::all()),
 
-        echo "Roles & Permissions (Super Admin, Admin, Manager, User) seeded successfully.\n";
+                'Admin' =>
+                    $role->syncPermissions(Permission::all()),
+
+                'Manager' =>
+                    $role->syncPermissions(
+                        Permission::where(fn ($q) =>
+                            $q->where('name', 'like', '%.list')
+                              ->orWhere('name', 'like', '%.write')
+                        )->get()
+                    ),
+
+                'User' =>
+                    $role->syncPermissions(
+                        Permission::where('name', 'like', '%.list')->get()
+                    ),
+            };
+        }
     }
 
 

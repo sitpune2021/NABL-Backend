@@ -2,22 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Exception;
-use App\Models\Document;
-use App\Models\DocumentDepartment;
-use App\Models\DocumentVersion;
-use App\Models\DocumentVersionTemplate;
-use App\Models\DocumentVersionWorkflowLog;
-use App\Models\User;
-use App\Models\Template;
+use App\Models\{
+    Document,
+    DocumentDepartment,
+    DocumentVersion,
+    DocumentVersionTemplate,
+    DocumentVersionWorkflowLog,
+    LabDocumentsEntryData,
+    LabUser,
+    Template,
+    User,
+    LabDocuments
+};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\Auth;
-use App\Models\LabDocumentsEntryData;
-use App\Models\LabUser;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class DocumentController extends Controller
 {
@@ -28,26 +30,26 @@ class DocumentController extends Controller
     {
         try {
             $user = auth()->user();
-            $labUser = LabUser::where('user_id', $user->id)->first();
+        $labUser = LabUser::where('user_id', $user->id)->first();
             $query = Document::with('currentVersion.workflowLogs', 'category');
 
-            if ($labUser) {
+        if ($labUser) {
                 $query->whereIn('id', function($q) use ($labUser) {
                     $q->select('document_id')
                     ->from('lab_clause_documents')
                     ->where('lab_id', $labUser->lab_id); // Only for this lab
                 });
-            }
+        }
 
             // Search
-            if ($request->filled('query')) {
+        if ($request->filled('query')) {
                 $search = $request->input('query');
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%");
                 });
-            }
+        }
 
-            // Sorting
+             // Sorting
             $sortKey = $request->input('sort.key', 'id'); // default sort by id
             $sortOrder = $request->input('sort.order', 'asc'); // default ascending
 
@@ -58,7 +60,7 @@ class DocumentController extends Controller
                 $query->orderBy($sortKey, $sortOrder);
             }
 
-            // Pagination
+                    // Pagination
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
@@ -66,9 +68,9 @@ class DocumentController extends Controller
 
 
             return response()->json([
-                'status' => true,
-                'data' => $documents->items(),
-                'total' => $documents->total()
+            'status' => true,
+            'data' => $documents->items(),
+            'total' => $documents->total()
             ], 200);
 
         } catch (\Exception $e) {
@@ -127,11 +129,19 @@ class DocumentController extends Controller
 
         DB::beginTransaction();
         try {
+            $authUser = auth()->user();
+            $labUser = LabUser::where('user_id', $authUser->id)->first();
+
+            $ownerType = $labUser ? 'lab' : 'super_admin';
+            $ownerId = $labUser?->lab_id;
+
             $document = Document::create([
                 'name' => $request->name,
                 'category_id' => $request->category_id,
                 'status' => $request->status,
                 'mode' => $request->mode,
+                'owner_type' => $ownerType,
+                'owner_id' => $ownerId,
             ]);
 
             foreach ($request->department as $deptId) {
@@ -156,10 +166,10 @@ class DocumentController extends Controller
                 'review_frequency' => $request->review_frequency,
                 'notification_unit' => $request->notification_unit,
                 'notification_value' => $request->notification_value,
-                'workflow_state' => $request->workflow_state,
             ];
 
             if ($request->mode === 'create') {
+                $versionData['workflow_state'] = $request->editor_schema;
                 $versionData['editor_schema'] = $request->editor_schema;
                 $versionData['form_fields'] = $request->form_fields;
             }
@@ -185,24 +195,19 @@ class DocumentController extends Controller
             }
 
             // Workflow log
-            if (
-                $request->mode === 'create' &&
-                $request->filled(['step_type', 'performed_by'])
-            ) {
-                $user = User::where('username', $request->performed_by)->first();
-
-                DocumentVersionWorkflowLog::create([
-                    'document_version_id' => $version->id,
-                    'step_type' => $request->step_type,
-                    'step_status' => 'completed',
-                    'performed_by' => $user?->id,
-                    'comments' => 'Initial workflow step',
-                    'created_at' => $request->performed_date ?? now(),
-                ]);
+            if ($request->mode === 'create' && $request->filled(['step_type', 'performed_by'])) {
+                $performedBy = User::where('username', $request->performed_by)->first();
+                if ($performedBy) {
+                    DocumentVersionWorkflowLog::create([
+                        'document_version_id' => $version->id,
+                        'step_type' => $request->step_type,
+                        'step_status' => 'completed',
+                        'performed_by' => $performedBy->id,
+                        'comments' => 'Initial workflow step',
+                        'created_at' => $request->performed_date ?? now(),
+                    ]);
+                }
             }
-
-            $authUser = auth()->user();
-            $labUser = LabUser::where('user_id', $authUser->id)->first();
 
             if ($labUser) {
                 LabDocuments::create([
@@ -216,11 +221,7 @@ class DocumentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $document->load([
-                    'departments',
-                    'versions.templates',
-                    'versions.workflowLogs',
-                ])
+                'data' => $document->load(['departments', 'versions.templates', 'versions.workflowLogs'])
             ], 201);
 
         } catch (\Throwable $e) {
@@ -240,14 +241,14 @@ class DocumentController extends Controller
     public function show(string $id)
     {
         try {
-            $document = Document::with([
+        $document = Document::with([
                 'departments:id',
-                'versions.templates.template.currentVersion',
-                'versions.workflowLogs.user',
+            'versions.templates.template.currentVersion',
+            'versions.workflowLogs.user',
                 'currentVersion.templates.template.currentVersion'
-            ])->findOrFail($id);
+        ])->findOrFail($id);
 
-            $version = $document->currentVersion;
+                 $version = $document->currentVersion;
 
             $payload = [
                 'mode' => $document->mode,
@@ -307,8 +308,8 @@ class DocumentController extends Controller
                 }
             }
 
-            return response()->json([
-                'success' => true,
+        return response()->json([
+            'success' => true,
                 'data' => $payload
             ], 200);
 
@@ -365,19 +366,12 @@ class DocumentController extends Controller
         DB::beginTransaction();
         try {
             $document = Document::findOrFail($id);
-
-            /** -------------------------
-             * Update Document
-             * --------------------------*/
             $document->update($request->only([
                 'name',
                 'category_id',
                 'status',
             ]));
 
-            /** -------------------------
-             * Update Departments
-             * --------------------------*/
             if ($request->has('department')) {
                 DocumentDepartment::where('document_id', $document->id)->delete();
 
@@ -389,11 +383,7 @@ class DocumentController extends Controller
                 }
             }
 
-            /** -------------------------
-             * Update Current Version
-             * --------------------------*/
-            $version = $document->versions()->where('is_current', true)->first();
-
+            $version = $document->currentVersion;
             if ($version) {
                 $version->update($request->only([
                     'number',
@@ -491,27 +481,27 @@ class DocumentController extends Controller
             $fieldsEntry = $validated['fields_entry'];
 
             // Handle file upload only if document mode is not 'create' and file exists
-            if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
-                $file = $request->file('fields_entry.document');
+        if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
+            $file = $request->file('fields_entry.document');
 
                 // Generate unique filename
-                $filename = time() . '_' . $file->getClientOriginalName();
+            $filename = time() . '_' . $file->getClientOriginalName();
 
                 // Store file in storage/app/private/documents
-                $file->storeAs('documents', $filename, 'public');
+            $file->storeAs('documents', $filename, 'public');
 
                 // Replace file object with filename
                 $fieldsEntry['document'] = $filename;
-            }
+        }
 
             // Create LabDocumentsEntryData
-            $entry = LabDocumentsEntryData::create([
-                'user_id' => $labUser->user_id,
-                'lab_id' => $labUser->lab_id,
+        $entry = LabDocumentsEntryData::create([
+            'user_id' => $labUser->user_id,
+            'lab_id' => $labUser->lab_id,
                 'document_id' => $validated['document_id'],
                 'document_version_id' => $document->currentVersion?->id ?? $validated['document_id'],
                 'fields_entry' => json_encode($fieldsEntry),
-            ]);
+        ]);
 
             DB::commit(); // Commit transaction
 

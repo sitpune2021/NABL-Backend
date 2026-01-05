@@ -5,11 +5,9 @@ namespace Database\Seeders;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\User;
-use App\Models\UserLocationDepartmentRole;
-use App\Models\UserCustomPermission;
 use Spatie\Permission\Models\Role;
-use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\PermissionRegistrar;
 
 class UserSeeder extends Seeder
 {
@@ -19,7 +17,7 @@ class UserSeeder extends Seeder
     public function run(): void
     {
         // -----------------------------------------
-        // 1️⃣ SUPER ADMIN (No ULDR, No location)
+        // 1️⃣ SUPER ADMIN (LEVEL 1)
         // -----------------------------------------
         $superAdmin = User::firstOrCreate(
             ['email' => 'superadmin@example.com'],
@@ -34,12 +32,12 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $superAdmin->assignRole('Super Admin');
+        $this->assignMasterRoleByLevel($superAdmin, 1);
 
-        echo "Super Admin created\n";
+        $this->command->info('✅ Super Admin (Level 1) created');
 
         // -----------------------------------------
-        // 2️⃣ ADMIN USER (With ULDR)
+        // 2️⃣ ADMIN (LEVEL 2)
         // -----------------------------------------
         $admin = User::firstOrCreate(
             ['email' => 'admin@example.com'],
@@ -54,15 +52,12 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $admin->assignRole('Admin');
+        $this->assignMasterRoleByLevel($admin, 2);
 
-        // Assign ULDR (example: Location 1, Department 1)
-        $this->assignULDR($admin->id, 1, 1, Role::where('name', 'Admin')->first()->id);
-
-        echo "Admin created\n";
+        $this->command->info('✅ Admin (Level 2) created');
 
         // -----------------------------------------
-        // 3️⃣ MANAGER USER (With ULDR)
+        // 3️⃣ MANAGER (LEVEL 3)
         // -----------------------------------------
         $manager = User::firstOrCreate(
             ['email' => 'manager@example.com'],
@@ -76,14 +71,12 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $manager->assignRole('Manager');
+        $this->assignMasterRoleByLevel($manager, 3);
 
-        $this->assignULDR($manager->id, 1, 2, Role::where('name', 'Manager')->first()->id);
-
-        echo "Manager created\n";
+        $this->command->info('✅ Manager (Level 3) created');
 
         // -----------------------------------------
-        // 4️⃣ NORMAL USER (With ULDR)
+        // 4️⃣ NORMAL USER (LEVEL 4)
         // -----------------------------------------
         $normalUser = User::firstOrCreate(
             ['email' => 'user@example.com'],
@@ -97,39 +90,21 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $normalUser->assignRole('User');
+        $this->assignMasterRoleByLevel($normalUser, 4);
 
-        $this->assignULDR($normalUser->id, 2, 3, Role::where('name', 'User')->first()->id);
-
-        echo "Normal user created\n";
+        $this->command->info('✅ User (Level 4) created');
     }
 
-
-    // -------------------------------------------------------
-    // Helper: Assign ULDR & attach default permissions
-    // -------------------------------------------------------
-    private function assignULDR($userId, $locationId, $departmentId, $roleId)
+    /* -------------------------------------------------------------
+     | ASSIGN MASTER ROLE BY LEVEL
+     |-------------------------------------------------------------*/
+    private function assignMasterRoleByLevel(User $user, int $level): void
     {
-        $uldr = UserLocationDepartmentRole::create([
-            'user_id'       => $userId,
-            'location_id'   => $locationId,
-            'department_id' => $departmentId,
-            'role_id'       => $roleId,
-            'status'        => 'active',
-            'position_type' => 'permanent',
-        ]);
 
-        // Get permissions for this role
-        $role = Role::find($roleId);
+        $role = Role::where('level', $level)
+            ->whereNull('lab_id') // MASTER ONLY
+            ->firstOrFail();
 
-        foreach ($role->permissions as $perm) {
-            UserCustomPermission::create([
-                'user_location_department_role_id' => $uldr->id,
-                'permission_id' => $perm->id,
-                'is_allowed' => true,
-            ]);
-        }
-
-        return $uldr;
+        $user->syncRoles([$role]);
     }
 }
