@@ -14,7 +14,7 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-            $roles = Role::with('users')->get()->map(function ($role) {
+            $roles = Role::with('users')->orderBy('level')->where('level', '>=', auth()->user()->roles->min('level'))->get()->map(function ($role) {
                 return [
                     'id' => $role->id,
                     'name' => $role->name,
@@ -24,8 +24,6 @@ class RolePermissionsController extends Controller
                         return [
                         'id' => $user->id,
                         'name' => $user->name,
-                        'email' => $user->email,
-                            // add other user fields as needed
                         ];
                     }),
                 ];

@@ -169,7 +169,7 @@ class DocumentController extends Controller
             ];
 
             if ($request->mode === 'create') {
-                $versionData['workflow_state'] = $request->editor_schema;
+                $versionData['workflow_state'] = $request->workflow_state;
                 $versionData['editor_schema'] = $request->editor_schema;
                 $versionData['form_fields'] = $request->form_fields;
             }
