@@ -14,16 +14,20 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-            $roles = Role::with('users')->orderBy('level')->where('level', '>=', auth()->user()->roles->min('level'))->get()->map(function ($role) {
+        $roles = Role::with('users')
+            ->orderBy('level', 'asc') 
+            ->get()
+            ->map(function ($role) {
                 return [
                     'id' => $role->id,
                     'name' => $role->name,
                     'description' => $role->description,
                     'accessRight' => $this->formatPermissions($role->permissions->pluck('name')->toArray()),
+                    'level' => $role->level,
                     'users' => $role->users->map(function ($user) {
                         return [
-                        'id' => $user->id,
-                        'name' => $user->name,
+                            'id' => $user->id,
+                            'name' => $user->name,
                         ];
                     }),
                 ];
@@ -36,57 +40,70 @@ class RolePermissionsController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|unique:roles,name',
-            'description' => 'nullable|string',
-            'accessRight' => 'required|array',
-        ]);
+public function store(Request $request)
+{
+    $request->validate([
+        'name' => 'required|string|unique:roles,name',
+        'description' => 'nullable|string',
+        'level' => 'required|integer|min:1',
+        'accessRight' => 'required|array',
+    ]);
+    $targetLevel = $request->level;
+    // Max level
+    $maxLevel = Role::max('level') ?? 0;
+    //  If level is beyond max, just append
+    if ($targetLevel > $maxLevel) {
+        $insertLevel = $maxLevel + 1;
+    } else {
+        Role::where('level', '>=', $targetLevel)->increment('level');
+        $insertLevel = $targetLevel;
+    }
 
-        $role = Role::create([
-            'name' => $request->name,
-            'description' => $request->description ?? null,
-        ]);
+    $role = Role::create([
+        'name' => $request->name,
+        'description' => $request->description ?? null,
+        'level' => $insertLevel,
+    ]);
 
         // Fetch access modules (like seeder)
-        $modules = $this->getAccessModules();
+    $modules = $this->getAccessModules();
 
         // Prepare map of module id => full key
-        $moduleMap = [];
-        foreach ($modules as $module) {
-            $moduleMap[$module['id']] = $module['key'];
-        }
+    $moduleMap = [];
+    foreach ($modules as $module) {
+        $moduleMap[$module['id']] = $module['key'];
+    }
 
         // Build permission strings from payload
-        $permissions = [];
-        foreach ($request->accessRight as $moduleId => $actions) {
-            $fullKey = $moduleMap[$moduleId] ?? null;
-            if (!$fullKey) continue;
+    $permissions = [];
+    foreach ($request->accessRight as $moduleId => $actions) {
+        $fullKey = $moduleMap[$moduleId] ?? null;
+        if (!$fullKey) continue;
 
-            foreach ($actions as $action) {
-                $permissions[] = $fullKey . '.' . $action;
-            }
+        foreach ($actions as $action) {
+            $permissions[] = $fullKey . '.' . $action;
         }
+    }
 
         // Create permissions if not exist
-        foreach ($permissions as $permissionName) {
-            Permission::firstOrCreate(['name' => $permissionName]);
-        }
+    foreach ($permissions as $permissionName) {
+        Permission::firstOrCreate(['name' => $permissionName]);
+    }
 
         // Assign permissions to role
-        $role->syncPermissions($permissions);
+    $role->syncPermissions($permissions);
 
-        return response()->json([
-            'message' => 'Role created successfully',
-            'role' => [
-                'id' => $role->id,
-                'name' => $role->name,
-                'description' => $role->description,
-                'accessRight' => $request->accessRight,
-            ],
-        ], 201);
-    }
+    return response()->json([
+        'message' => 'Role created successfully',
+        'role' => [
+            'id' => $role->id,
+            'name' => $role->name,
+            'description' => $role->description,
+            'level' => $role->level,
+            'accessRight' => $request->accessRight,
+        ],
+    ], 201);
+}
 
     /**
      * Display the specified resource.
@@ -100,6 +117,7 @@ class RolePermissionsController extends Controller
             'name' => $role->name,
             'description' => $role->description,
             'accessRight' => $this->formatPermissions($role->permissions->pluck('name')->toArray()),
+            'level' => $role->level,
             'users' => $role->users->map(function ($user) {
                 return [
                     'id' => $user->id,
@@ -155,6 +173,7 @@ class RolePermissionsController extends Controller
                 'id' => $role->id,
                 'name' => $role->name,
                 'description' => $role->description,
+                'level' => $role->level, 
                 'accessRight' => $request->accessRight,
             ],
         ]);

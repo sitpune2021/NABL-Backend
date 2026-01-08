@@ -38,13 +38,13 @@ class RolePermissionSeeder extends Seeder
         }
     }
 
-     private function seedMasterRoles(): void
+    private function seedMasterRoles(): void
     {
         $roles = [
             ['name' => 'Super Admin', 'description' => 'Super Admin',  'level' => 1],
             ['name' => 'Admin',       'description' => 'Admin',        'level' => 2],
             ['name' => 'Manager',     'description' => 'Manager',      'level' => 3],
-            ['name' => 'User',        'description' => 'User',      'level' => 4],
+            ['name' => 'User',        'description' => 'User',         'level' => 4],
         ];
 
         foreach ($roles as $roleData) {

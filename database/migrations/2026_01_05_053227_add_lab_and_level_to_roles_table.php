@@ -12,8 +12,13 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('roles', function (Blueprint $table) {
-            $table->unsignedTinyInteger('level')->after('lab_id');
-            $table->string('description')->after('level');
+            $table->unsignedTinyInteger('level')
+                ->unique()             
+                ->after('lab_id');
+
+            $table->string('description')
+                ->nullable()          
+                ->after('level');
         });
     }
 
@@ -23,7 +28,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('roles', function (Blueprint $table) {
-            //
+            $table->dropColumn(['level', 'description']);
         });
     }
 };
