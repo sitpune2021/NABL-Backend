@@ -28,12 +28,12 @@ Route::post('/sign-in', [AuthController::class,'login'])->middleware('throttle:5
 
 // Protected routes
 Route::middleware(['auth:api', 'throttle:api'])->group(function () {
-    Route::post('/sign-out', [AuthController::class,'logout']);
-    Route::get('/access-modules', [NavigationItemController::class, 'accessModules']);
-
+    Route::post('sign-out', [AuthController::class,'logout']);
+    Route::get('access-modules', [NavigationItemController::class, 'accessModules']);
+    Route::get('role-levels', [RolePermissionsController::class, 'levels']); // Get role
     Route::apiResource('documents', DocumentController::class);
-    Route::post('/data-entry', [DocumentController::class, 'dataEntry']);
-    Route::get('/data-entry/{id}', [DocumentController::class, 'getDataEntriesByDocument']);
+    Route::post('data-entry', [DocumentController::class, 'dataEntry']);
+    Route::get('data-entry/{id}', [DocumentController::class, 'getDataEntriesByDocument']);
 
     Route::apiResource('users', UserController::class);
     Route::apiResource('roles', RolePermissionsController::class);
@@ -43,13 +43,14 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('units', UnitController::class);
     Route::apiResource('instruments', InstrumentController::class);
     Route::apiResource('templates', TemplateController::class);
+    Route::get('templates/versions/{templateId}',[TemplateController::class, 'versions'] );
     Route::apiResource('zones', ZoneController::class);
     Route::apiResource('clusters', ClusterController::class);
     Route::apiResource('locations', LocationController::class);
     Route::apiResource('labs', LabController::class);
     Route::apiResource('standards', StandardController::class);
-    Route::get('/standards-current', [StandardController::class, 'currentStandards']);
+    Route::get('standards-current', [StandardController::class, 'currentStandards']);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);
-    Route::get('/profile/me', [AuthProfileController::class, 'show']);
-    Route::put('/profile/update', [AuthProfileController::class, 'update']);
+    Route::get('profile/me', [AuthProfileController::class, 'show']);
+    Route::put('profile/update', [AuthProfileController::class, 'update']);
 });
