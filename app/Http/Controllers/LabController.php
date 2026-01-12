@@ -274,7 +274,6 @@ class LabController extends Controller
 
         // templates
         foreach ($version->templates as $template) {
-            dd($template);
             DocumentVersionTemplate::create([
                 'document_version_id' => $newVersion->id,
                 'template_id' => $template->template_id,

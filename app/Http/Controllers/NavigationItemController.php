@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\NavigationItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use App\Services\NavigationAccessService;
 
 class NavigationItemController extends Controller
 {
@@ -21,12 +22,6 @@ class NavigationItemController extends Controller
             ->orderBy('order')
             ->get();
 
-        if ($user->is_super_admin) {
-            $cleanedItems = $this->cleanPaths($items);
-            return response()->json($cleanedItems);
-        }
-
-        // Permissions for non-super-admins
         $permissions = $user->getAllPermissions()
             ->pluck('name')
             ->filter(function ($perm) {
@@ -35,12 +30,9 @@ class NavigationItemController extends Controller
             ->push('home')
             ->toArray();
 
-        // dd($permissions);
-        // Filter menu array
         $menuArray = $items->toArray();
         $filteredMenu = $this->filterMenuArray($menuArray, $permissions);
 
-        // Clean paths recursively
         $cleanedItems = $this->cleanPaths($filteredMenu, false); // false = it's array now
 
         return response()->json($cleanedItems);
@@ -127,6 +119,7 @@ class NavigationItemController extends Controller
             'translateKey' => 'required|string',
             'icon' => 'required|string',
             'type' => 'nullable|in:title,collapse,item',
+            'for' => 'required|in:lab,master,both',
             'is_external_link' => 'boolean|nullable',
             'authority' => 'array|nullable',
             'description' => 'string|nullable',
@@ -145,6 +138,7 @@ class NavigationItemController extends Controller
             'translate_key' => $validated['translateKey'],
             'icon' => $validated['icon'],
             'type' => $validated['type'] ?? 'item',
+            'for' => $validated['for'] ?? 'both',
             'is_external_link' => $validated['is_external_link'] ?? false,
             'authority' => $validated['authority'] ?? [],
             'description' => $validated['description'] ?? null,
@@ -212,55 +206,14 @@ class NavigationItemController extends Controller
         //
     }
 
-    public function accessModules()
+    public function accessModules(NavigationAccessService $service)
     {
-        $items = NavigationItem::with('children')->whereNull('parent_id')->orderBy('order')->get();
-
-        $modules = $this->mapToAccessModules($items);
-
-       return response()->json($modules, 200, [], JSON_PRETTY_PRINT);
-    }
-
-    private function mapToAccessModules($items)
-    {
-        $modules = [];
-
-        foreach ($items as $item) {
-            if ($item->relationLoaded('children') && $item->children->isNotEmpty()) {
-                foreach ($item->children as $child) {
-                    [$group, $module] = explode('.', str_replace('.list', '', $child->key));
-                    $modules[$group][] = [
-                        'id' => $module,
-                        'key' => str_replace('.list', '', $child->key),
-                        'name' => $child->title . ' Management',
-                        'description' => 'Access control for ' . strtolower($child->title) . ' operations',
-                        'linkedMenuKeys' => [$child->key],
-                        'accessor' => $this->getDefaultAccessors($child->key),
-                    ];
-                }
-            }
-        }
-
-        return $modules;
-    }
-
-    private function getDefaultAccessors($key)
-    {
-        if ($key === 'masters.document.list') {
-            return [
-                ['label' => 'Read', 'value' => 'list'],
-                ['label' => 'Write', 'value' => 'write'],
-                ['label' => 'Data Entry', 'value' => 'data-entry'],
-                ['label' => 'Data Review', 'value' => 'data-review'],
-                ['label' => 'Delete', 'value' => 'delete'],
-            ];
-        }
-
-        return [
-            ['label' => 'Read', 'value' => 'list'],
-            ['label' => 'Write', 'value' => 'write'],
-            ['label' => 'Delete', 'value' => 'delete'],
-        ];
+        return response()->json(
+            $service->getAccessModules(auth()->user()),
+            200,
+            [],
+            JSON_PRETTY_PRINT
+        );
     }
 }
 

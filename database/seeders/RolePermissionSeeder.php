@@ -88,8 +88,9 @@ class RolePermissionSeeder extends Seeder
 
     private function getAccessModules()
     {
-        $items = NavigationItem::with('children')
+        $items = NavigationItem::with('childrenForMaster')
             ->whereNull('parent_id')
+            ->forMaster()
             ->orderBy('order')
             ->get();
 

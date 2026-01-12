@@ -64,6 +64,12 @@ class ClauseDocumentLinkController extends Controller
                 ClauseDocumentLink::insert($links);
             }
 
+            Standard::where('id', $request->standard_id)
+            ->where('status', 'draft')
+            ->update([
+                'status' => 'published'
+            ]);
+
             DB::commit();
 
             return response()->json([

@@ -19,6 +19,7 @@ return new class extends Migration
             $table->string('translate_key');
             $table->string('icon');
             $table->enum('type', ['title', 'collapse', 'item']);
+            $table->enum('for', ['lab', 'master', 'both']);
             $table->boolean('is_external_link')->nullable();
             $table->json('authority')->nullable();
             $table->string('description')->nullable();
