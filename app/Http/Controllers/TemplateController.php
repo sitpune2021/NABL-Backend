@@ -295,14 +295,80 @@ class TemplateController extends Controller
     /**
      * List all versions of a template
      */
-    public function versions($templateId)
+    public function versions(Request $request, $templateId)
     {
         try {
-            $template = Template::findOrFail($templateId);
-            $versions = $template->versions()->orderBy('major','desc')->orderBy('minor','desc')->get();
-            return response()->json(['success'=>true,'data'=>$versions],200);
-        } catch(Exception $e) {
-            return response()->json(['success'=>false,'message'=>'Template not found','error'=>$e->getMessage()],404);
+            $template = Template::withTrashed()->findOrFail($templateId);
+
+            $query = $template->versions()->with('template');
+
+            if ($request->filled('query')) {
+                $search = strtolower($request->input('query'));
+
+                $query->where(function ($q) use ($search) {
+                    $q->whereRaw("CAST(major AS TEXT) LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("CAST(minor AS TEXT) LIKE ?", ["%{$search}%"])
+                    ->orWhereRaw("LOWER(status) LIKE ?", ["%{$search}%"]);
+                });
+            }
+
+            $pageSize  = (int) $request->input('pageSize', 10);
+            $pageIndex = (int) $request->input('pageIndex', 1);
+
+            $versions = $query
+                ->orderBy('major', 'desc')
+                ->orderBy('minor', 'desc')
+                ->paginate($pageSize, ['*'], 'page', $pageIndex);
+
+            $data = $versions->map(function ($version) use ($template) {
+
+                $createdBy = TemplateChangeHistory::where('template_id', $template->id)
+                    ->where('template_version_id', $version->id)
+                    ->where('change_context', 'create')
+                    ->orderBy('created_at', 'asc')
+                    ->first();
+
+                $lastChangedBy = TemplateChangeHistory::where('template_id', $template->id)
+                    ->where('template_version_id', $version->id)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                return [
+                    'id' => $version->id,
+                    'name' => $template->name,
+                    'temp_id' => $template->id,
+                    'version' => "{$version->major}.{$version->minor}",
+                    'major' => $version->major,
+                    'minor' => $version->minor,
+                    'status' => $version->status,
+                    'is_current' => $version->is_current,
+
+                    'created_by' => $createdBy?->changed_by,
+                    'last_changed_by' => $lastChangedBy?->changed_by,
+
+                    'created_at' => $version->created_at,
+                    'updated_at' => $version->updated_at,
+
+                    'template' => [
+                        'css' => $version->css,
+                        'html' => $version->html,
+                        'json' => $version->json_data,
+                    ],
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data'    => $data,
+                'total'   => $versions->total(),
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Template not found',
+                'error'   => $e->getMessage(),
+            ], 404);
         }
     }
 

@@ -6,6 +6,8 @@ use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
 use App\Models\NavigationItem;
+use App\Services\NavigationAccessService;
+use App\Models\LabUser;
 
 class RolePermissionsController extends Controller
 {
@@ -14,10 +16,7 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-        $roles = Role::with('users')
-            ->orderBy('level', 'asc') 
-            ->get()
-            ->map(function ($role) {
+            $roles = Role::with('users')->orderBy('level')->where('level', '>', auth()->user()->roles->min('level'))->get()->map(function ($role) {
                 return [
                     'id' => $role->id,
                     'name' => $role->name,
@@ -36,37 +35,42 @@ class RolePermissionsController extends Controller
         return response()->json($roles);
     }
 
+    public function levels()
+    {
+        $levels = Role::select('level')->distinct()->orderBy('level')->pluck('level');
+        return response()->json($levels);
+    }
 
     /**
      * Store a newly created resource in storage.
      */
-public function store(Request $request)
-{
-    $request->validate([
-        'name' => 'required|string|unique:roles,name',
-        'description' => 'nullable|string',
-        'level' => 'required|integer|min:1',
-        'accessRight' => 'required|array',
-    ]);
-    $targetLevel = $request->level;
-    // Max level
-    $maxLevel = Role::max('level') ?? 0;
-    //  If level is beyond max, just append
-    if ($targetLevel > $maxLevel) {
-        $insertLevel = $maxLevel + 1;
-    } else {
-        Role::where('level', '>=', $targetLevel)->increment('level');
-        $insertLevel = $targetLevel;
-    }
+    public function store(Request $request, NavigationAccessService $service)
+    {
+        $request->validate([
+            'name' => 'required|string|unique:roles,name',
+            'description' => 'nullable|string',
+            'accessRight' => 'required|array',
+        ]);
 
-    $role = Role::create([
-        'name' => $request->name,
-        'description' => $request->description ?? null,
-        'level' => $insertLevel,
-    ]);
+        $targetLevel = $request->level;
+        $maxLevel = Role::max('level') ?? 0;
+        if ($targetLevel > $maxLevel) {
+            $insertLevel = $maxLevel + 1;
+        } else {
+            Role::where('level', '>=', $targetLevel)->increment('level');
+            $insertLevel = $targetLevel;
+        }
 
-        // Fetch access modules (like seeder)
-    $modules = $this->getAccessModules();
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        $role = Role::create([
+            'name' => $request->name,
+            'description' => $request->description ?? null,
+            'level' => $insertLevel,
+        ]);
+
+        $modules = $service->getAccessModules($user);
 
         // Prepare map of module id => full key
     $moduleMap = [];
@@ -132,7 +136,7 @@ public function store(Request $request)
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, $id)
+    public function update(Request $request, $id, NavigationAccessService $service)
     {
         $role = Role::findOrFail($id);
 
@@ -140,7 +144,7 @@ public function store(Request $request)
             'accessRight' => 'required|array',
         ]);
         // Fetch access modules (like seeder)
-        $modules = $this->getAccessModules();
+        $modules = $service->getAccessModules(auth()->user());
 
         // Prepare map of module id => full key
         $moduleMap = [];
@@ -208,57 +212,5 @@ public function store(Request $request)
             }
         }
         return $accessRight;
-    }
-    
-
-    private function getAccessModules()
-    {
-        $items = NavigationItem::with('children')
-            ->whereNull('parent_id')
-            ->orderBy('order')
-            ->get();
-
-        return $this->mapModules($items);
-    }
-
-
-    private function mapModules($items)
-    {
-        $modules = [];
-
-        foreach ($items as $item) {
-            if ($item->children->isNotEmpty()) {
-                foreach ($item->children as $child) {
-                    $modules[] = [
-                        'id' => str_replace([$item->key . '.', '.list'], '', $child->key),
-                        'key' =>  str_replace('.list', '', $child->key),
-                        'name' => $child->title . ' Management',
-                        'accessor' => $this->defaultPerms($child->key),
-                    ];
-                }
-            }
-        }
-
-        return $modules;
-    }
-
-
-    private function defaultPerms($key)
-    {
-        if ($key === 'masters.document.list') {
-            return [
-                ['label' => 'Read', 'value' => 'list'],
-                ['label' => 'Write', 'value' => 'write'],
-                ['label' => 'Data Entry', 'value' => 'data-entry'],
-                ['label' => 'Data Review', 'value' => 'data-review'],
-                ['label' => 'Delete', 'value' => 'delete'],
-            ];
-        }
-
-        return [
-            ['label' => 'Read', 'value' => 'list'],
-            ['label' => 'Write', 'value' => 'write'],
-            ['label' => 'Delete', 'value' => 'delete'],
-        ];
     }
 }

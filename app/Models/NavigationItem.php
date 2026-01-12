@@ -10,7 +10,7 @@ class NavigationItem extends Model
     use HasFactory;
 
     protected $fillable = [
-        'key', 'path', 'title', 'translate_key', 'icon', 'type',
+        'key', 'path', 'title', 'translate_key', 'icon', 'type','for',
         'is_external_link', 'authority', 'description', 'description_key',
         'parent_id', 'layout', 'show_column_title', 'columns', 'order'
     ];
@@ -26,8 +26,19 @@ class NavigationItem extends Model
         return $this->hasMany(NavigationItem::class, 'parent_id')->orderBy('order')->with('children');
     }
 
+    public function childrenForMaster()
+    {
+        return $this->hasMany(NavigationItem::class, 'parent_id')->orderBy('order')->forMaster()->with('childrenForMaster');
+    }
+
     public function parent()
     {
         return $this->belongsTo(NavigationItem::class, 'parent_id');
     }
+
+    public function scopeForMaster($query)
+    {
+        return $query->whereIn('for', ['both', 'master']);
+    }
+
 }
