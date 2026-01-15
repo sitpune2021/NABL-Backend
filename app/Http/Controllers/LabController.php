@@ -311,97 +311,98 @@ class LabController extends Controller
     /**
      * Display the specified lab.
      */
-    public function show(string $id)
-    {
-        try {
-            $lab = Lab::with([
-                'contacts',
-                'location.contacts',
-                'location.departments',
-                'location.locationRecord',
-                'location.locationRecord.cluster',
-                'labClauseDocuments',
-                'users',
-            ])->findOrFail($id);
+   public function show(string $id)
+{
+    try {
+        $lab = Lab::with([
+            'contacts',
+            'location.contacts',
+            'location.departments',
+            'location.locationRecord',
+            'location.locationRecord.cluster',
+            'labClauseDocuments',
+            'users',
+        ])->findOrFail($id);
 
-            $labAdmin = $lab->users->map(fn($user) => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'phone' => $user->phone,
-                'is_super_admin' => $user->is_super_admin,
-            ]);
+        $labAdmin = $lab->users->map(fn($user) => [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'phone' => $user->phone,
+            'is_super_admin' => $user->is_super_admin,
+        ]);
+        $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
 
-            $data = [
-                'name'     => $lab->name,
-                'labType'  => $lab->labType,
-                'labCode'  => $lab->labCode,
-                'address'  => $lab->address,
+        $data = [
+            'name'     => $lab->name,
+            'labType'  => $lab->labType,
+            'labCode'  => $lab->labCode,
+            'address'  => $lab->address,
 
-                // Lab Emails
-                'emails' => $lab->contacts
-                    ->where('type', 'email')
-                    ->map(fn ($c) => [
-                        'id'         => $c->id,
-                        'type'       => 'email',
-                        'value'      => $c->value,
-                        'label'      => $c->label,
-                        'is_primary' => (bool) $c->is_primary,
-                    ])
-                    ->values(),
+            // Lab Emails
+            'emails' => $lab->contacts
+                ->where('type', 'email')
+                ->map(fn ($c) => [
+                    'id'         => $c->id,
+                    'type'       => 'email',
+                    'value'      => $c->value,
+                    'label'      => $c->label,
+                    'is_primary' => (bool) $c->is_primary,
+                ])
+                ->values(),
 
-                // Lab Phones
-                'phones' => $lab->contacts
-                    ->where('type', 'phone')
-                    ->map(fn ($c) => [
-                        'id'         => $c->id,
-                        'type'       => 'phone',
-                        'value'      => $c->value,
-                        'label'      => $c->label,
-                        'is_primary' => (bool) $c->is_primary,
-                    ])
-                    ->values(),
+            // Lab Phones
+            'phones' => $lab->contacts
+                ->where('type', 'phone')
+                ->map(fn ($c) => [
+                    'id'         => $c->id,
+                    'type'       => 'phone',
+                    'value'      => $c->value,
+                    'label'      => $c->label,
+                    'is_primary' => (bool) $c->is_primary,
+                ])
+                ->values(),
 
-                'users' => $labAdmin,
-                
+            'users' => $labAdmin,
+
                  // location
-                'location' => $lab->location->map(function ($location) {
+            'location' => $lab->location->map(function ($location) {
                     $primaryEmail = $location->contacts->where('type', 'email')->firstWhere('is_primary', true);
                     $primaryPhone = $location->contacts->where('type', 'phone')->firstWhere('is_primary', true);
 
-                    return [
-                        'id'            => $location->id,
-                        'zone_name'     => $location->locationRecord->cluster->zone_id ?? null,
-                        'cluster_name'  => $location->locationRecord->cluster->id ?? null,
-                        'location_name' => $location->location_id,
+                return [
+                    'id'            => $location->id,
+                    'zone_name'     => $location->locationRecord->cluster->zone_id ?? null,
+                    'cluster_name'  => $location->locationRecord->cluster->id ?? null,
+                    'location_name' => $location->location_id,
 
-                        'prefix'    => $location->prefix,
-                        'shortName' => $location->shortName,
-                        'address'   => $location->address,
+                    'prefix'    => $location->prefix,
+                    'shortName' => $location->shortName,
+                    'address'   => $location->address,
 
                         // Location Emails
-                        'emails' => $location->contacts
-                            ->where('type', 'email')
-                            ->map(fn ($c) => [
-                                'id'         => $c->id,
-                                'type'       => 'email',
-                                'value'      => $c->value,
-                                'label'      => $c->label,
-                                'is_primary' => (bool) $c->is_primary,
-                            ])
-                            ->values(),
+                    'emails' => $location->contacts
+                        ->where('type', 'email')
+                        ->map(fn ($c) => [
+                            'id'         => $c->id,
+                            'type'       => 'email',
+                            'value'      => $c->value,
+                            'label'      => $c->label,
+                            'is_primary' => (bool) $c->is_primary,
+                        ])
+                        ->values(),
 
                         // Location Phones
-                        'phones' => $location->contacts
-                            ->where('type', 'phone')
-                            ->map(fn ($c) => [
-                                'id'         => $c->id,
-                                'type'       => 'phone',
-                                'value'      => $c->value,
-                                'label'      => $c->label,
-                                'is_primary' => (bool) $c->is_primary,
-                            ])
-                            ->values(),
+                    'phones' => $location->contacts
+                        ->where('type', 'phone')
+                        ->map(fn ($c) => [
+                            'id'         => $c->id,
+                            'type'       => 'phone',
+                            'value'      => $c->value,
+                            'label'      => $c->label,
+                            'is_primary' => (bool) $c->is_primary,
+                        ])
+                        ->values(),
 
                     // Instruments
                     // 'instruments' => $location->instruments
@@ -409,29 +410,30 @@ class LabController extends Controller
                     //     ->values(),
 
                         // Departments
-                        'departments' => $location->departments->map(fn ($dept) => [
-                            'id'   => $dept->id,
-                            'name' => $dept->department_id,
+                    'departments' => $location->departments->map(fn ($dept) => [
+                        'id'   => $dept->id,
+                        'name' => $dept->department_id,
                         // 'instruments' => $dept->instruments
                         //     ->pluck('id')
                         //     ->values(),
-                        ])->values(),
-                    ];
-                })->values(),
+                    ])->values(),
+                ];
+            })->values(),
 
-                'selectedClauses' => $lab->labClauseDocuments->flatMap(function($doc) {
-                    if ($doc->document_id) {
-                        return ["doc-{$doc->clause_id}-{$doc->document_id}"];
-                    } else {
-                        return ["clause-{$doc->clause_id}"];
-                    }
-                })->values(),
-            ];
+            'standard_id' => $standardId,
+            'selectedClauses' => $lab->labClauseDocuments->flatMap(function($doc) {
+                if ($doc->document_id) {
+                    return ["doc-{$doc->clause_id}-{$doc->document_id}"];
+                } else {
+                    return ["clause-{$doc->clause_id}"];
+                }
+            })->values(),
+        ];
 
-            return response()->json([
-                'success' => true,
-                'data'    => $data,
-            ], 200);
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ], 200);
 
         } catch (ModelNotFoundException $e) {
             return response()->json([
@@ -439,40 +441,99 @@ class LabController extends Controller
                 'message' => 'Lab not found',
             ], 404);
 
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch lab',
-                'error'   => $e->getMessage(),
-            ], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to fetch lab',
+            'error'   => $e->getMessage(),
+        ], 500);
     }
+}
 
 
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
-    {
-        DB::beginTransaction();
+   public function update(Request $request, string $id)
+{
+    DB::beginTransaction();
 
-        try {
-            $lab = Lab::findOrFail($id);
+    try {
+        $lab = Lab::findOrFail($id);
 
-            // 1. Update Lab basic info
-            $lab->update([
-                'name' => $request->name,
-                'labType' => $request->labType,
-                'labCode' => $request->labCode,
-                'address' => $request->address ?? null,
-            ]);
+        // 1. Update Lab basic info
+        $lab->update([
+            'name' => $request->name,
+            'labType' => $request->labType,
+            'labCode' => $request->labCode,
+            'address' => $request->address ?? null,
+        ]);
 
             // 2. Update Lab contacts (emails + phones)
             $lab->contacts()->delete(); // remove old contacts
 
-            foreach ($request->emails ?? [] as $email) {
-                $lab->contacts()->create([
+        foreach ($request->emails ?? [] as $email) {
+            $lab->contacts()->create([
+                'type' => 'email',
+                'value' => $email['value'],
+                'label' => $email['label'] ?? null,
+                'is_primary' => $email['is_primary'] ?? false,
+            ]);
+        }
+
+        foreach ($request->phones ?? [] as $phone) {
+            $lab->contacts()->create([
+                'type' => 'phone',
+                'value' => $phone['value'],
+                'label' => $phone['label'] ?? null,
+                'is_primary' => $phone['is_primary'] ?? false,
+            ]);
+        }
+
+            // 3. Update Lab User (super admin)
+        $primaryEmail = collect($request->emails ?? [])->firstWhere('is_primary', true);
+        $primaryPhone = collect($request->phones ?? [])->firstWhere('is_primary', true);
+
+        if ($primaryEmail || $primaryPhone) {
+            $user = User::updateOrCreate(
+                ['email' => $primaryEmail['value'] ?? null],
+                [
+                    'name' => 'Lab Admin',
+                    'username' => Str::lower(Str::random(10)),
+                    'dial_code' => $primaryPhone['value'] ? '+91' : null,
+                    'phone' => $primaryPhone['value'] ?? null,
+                    'address' => $request->address ?? null,
+                    'password' => Hash::make('superadmin1234'),
+                    'is_super_admin' => true,
+                ]
+            );
+
+                LabUser::updateOrCreate(
+                    ['lab_id' => $lab->id, 'user_id' => $user->id]
+                );
+        }
+
+            // 4. Update Lab Locations
+            // Remove old locations + departments + contacts
+        foreach ($lab->location as $location) {
+            $location->contacts()->delete();
+            $location->departments()->delete();
+        }
+        $lab->location()->delete();
+
+        foreach ($request->location ?? [] as $loc) {
+            $labLocation = LabLocation::create([
+                'lab_id' => $lab->id,
+                'location_id' => $loc['location_name'],
+                'prefix' => $loc['prefix'],
+                'shortName' => $loc['shortName'] ?? null,
+                'address' => $loc['address'] ?? null,
+            ]);
+
+                // Location Contacts
+            foreach ($loc['emails'] ?? [] as $email) {
+                $labLocation->contacts()->create([
                     'type' => 'email',
                     'value' => $email['value'],
                     'label' => $email['label'] ?? null,
@@ -480,73 +541,14 @@ class LabController extends Controller
                 ]);
             }
 
-            foreach ($request->phones ?? [] as $phone) {
-                $lab->contacts()->create([
+            foreach ($loc['phones'] ?? [] as $phone) {
+                $labLocation->contacts()->create([
                     'type' => 'phone',
                     'value' => $phone['value'],
                     'label' => $phone['label'] ?? null,
                     'is_primary' => $phone['is_primary'] ?? false,
                 ]);
             }
-
-            // 3. Update Lab User (super admin)
-            $primaryEmail = collect($request->emails ?? [])->firstWhere('is_primary', true);
-            $primaryPhone = collect($request->phones ?? [])->firstWhere('is_primary', true);
-
-            if ($primaryEmail || $primaryPhone) {
-                $user = User::updateOrCreate(
-                    ['email' => $primaryEmail['value'] ?? null],
-                    [
-                        'name' => 'Lab Admin',
-                        'username' => Str::lower(Str::random(10)),
-                        'dial_code' => $primaryPhone['value'] ? '+91' : null,
-                        'phone' => $primaryPhone['value'] ?? null,
-                        'address' => $request->address ?? null,
-                        'password' => Hash::make('superadmin1234'),
-                        'is_super_admin' => true,
-                    ]
-                );
-
-                LabUser::updateOrCreate(
-                    ['lab_id' => $lab->id, 'user_id' => $user->id]
-                );
-            }
-
-            // 4. Update Lab Locations
-            // Remove old locations + departments + contacts
-            foreach ($lab->location as $location) {
-                $location->contacts()->delete();
-                $location->departments()->delete();
-            }
-            $lab->location()->delete();
-
-            foreach ($request->location ?? [] as $loc) {
-                $labLocation = LabLocation::create([
-                    'lab_id' => $lab->id,
-                    'location_id' => $loc['location_name'],
-                    'prefix' => $loc['prefix'],
-                    'shortName' => $loc['shortName'] ?? null,
-                    'address' => $loc['address'] ?? null,
-                ]);
-
-                // Location Contacts
-                foreach ($loc['emails'] ?? [] as $email) {
-                    $labLocation->contacts()->create([
-                        'type' => 'email',
-                        'value' => $email['value'],
-                        'label' => $email['label'] ?? null,
-                        'is_primary' => $email['is_primary'] ?? false,
-                    ]);
-                }
-
-                foreach ($loc['phones'] ?? [] as $phone) {
-                    $labLocation->contacts()->create([
-                        'type' => 'phone',
-                        'value' => $phone['value'],
-                        'label' => $phone['label'] ?? null,
-                        'is_primary' => $phone['is_primary'] ?? false,
-                    ]);
-                }
 
                 // Admin per location
                 $primaryEmail = collect($loc['emails'] ?? [])->firstWhere('is_primary', true);
@@ -580,57 +582,57 @@ class LabController extends Controller
                 }
 
                 // Departments
-                foreach ($loc['departments'] ?? [] as $dept) {
-                    LabLocationDepartment::create([
-                        'lab_location_id' => $labLocation->id,
-                        'department_id' => $dept['name'] ?? null,
-                    ]);
-                }
+            foreach ($loc['departments'] ?? [] as $dept) {
+                LabLocationDepartment::create([
+                    'lab_location_id' => $labLocation->id,
+                    'department_id' => $dept['name'] ?? null,
+                ]);
             }
+        }
 
-            // 5. Update LabClauseDocuments
+        // 5. Update LabClauseDocuments
             $lab->labClauseDocuments()->delete(); // remove old clause documents
 
-            if (!empty($request->selectedClauses)) {
-                $records = [];
-                $standardId = $request->standard_id;
+        if (!empty($request->selectedClauses) && $request->standard_id) {
+            $records = [];
+            $standardId = $request->standard_id;
 
-                foreach ($request->selectedClauses as $item) {
-                    if (str_starts_with($item, 'clause-')) {
-                        $clauseId = intval(substr($item, 7));
-                        $records[] = [
-                            'lab_id' => $lab->id,
-                            'standard_id' => $standardId,
-                            'clause_id' => $clauseId,
-                            'document_id' => null,
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ];
-                    } elseif (str_starts_with($item, 'doc-')) {
-                        [$prefix, $clauseId, $docId] = explode('-', $item);
-                        $records[] = [
-                            'lab_id' => $lab->id,
-                            'standard_id' => $standardId,
-                            'clause_id' => intval($clauseId),
-                            'document_id' => intval($docId),
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ];
-                    }
+            foreach ($request->selectedClauses as $item) {
+                if (str_starts_with($item, 'clause-')) {
+                    $clauseId = intval(substr($item, 7));
+                    $records[] = [
+                        'lab_id' => $lab->id,
+                        'standard_id' => $standardId,
+                        'clause_id' => $clauseId,
+                        'document_id' => null,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                } elseif (str_starts_with($item, 'doc-')) {
+                    [$prefix, $clauseId, $docId] = explode('-', $item);
+                    $records[] = [
+                        'lab_id' => $lab->id,
+                        'standard_id' => $standardId,
+                        'clause_id' => intval($clauseId),
+                        'document_id' => intval($docId),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
                 }
-
-                LabClauseDocument::insert($records);
             }
 
-            DB::commit();
+            LabClauseDocument::insert($records);
+        }
+
+        DB::commit();
 
             return response()->json(['message' => 'Lab updated successfully', 'lab_id' => $lab->id], 200);
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['error' => $e->getMessage()], 500);
     }
+}
 
     /**
      * Remove the specified resource from storage.

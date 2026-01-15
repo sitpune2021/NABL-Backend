@@ -230,17 +230,23 @@ class StandardController extends Controller
         //
     }
 
-      public function currentStandards()
-    {
-        $standards = Standard::with([
-            'clauses.documents' ,// eager load clauses and related documents
-            'clauses.children'          // recursive children will load documents via children() relation
+      public function currentStandards(Request $request)
+{
+    $standardId = $request->standard_id;
 
-        ])->current()->first();
+    $standards = Standard::with([
+        'clauses.documents',
+        'clauses.children.documents',
+        'clauses.children.children'
+    ])
+    ->when($standardId, function ($q) use ($standardId) {
+        $q->where('id', $standardId);
+    })
+    ->first();
 
-        return response()->json([
-            'success' => true,
+    return response()->json([
+        'success' => true,
             'data' => $standards
-        ]);
-    }
+    ]);
+}
 }
