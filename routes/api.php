@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 
 // Public routes
 Route::post('/sign-in', [AuthController::class,'login'])->middleware('throttle:5,1');
-    Route::apiResource('navigation-items', NavigationItemController::class);
+Route::apiResource('navigation-items', NavigationItemController::class);
 
 // Protected routes
 Route::middleware(['auth:api', 'throttle:api'])->group(function () {
@@ -44,6 +44,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('instruments', InstrumentController::class);
     Route::apiResource('templates', TemplateController::class);
     Route::get('templates/versions/{templateId}',[TemplateController::class, 'versions'] );
+    Route::get('templates/{templateId}/versions/{versionId}', [TemplateController::class, 'showVersion']);
+    Route::put('templates/{templateId}/change-current-version',[TemplateController::class, 'changeCurrentVersion']);
     Route::apiResource('zones', ZoneController::class);
     Route::apiResource('clusters', ClusterController::class);
     Route::apiResource('locations', LocationController::class);
