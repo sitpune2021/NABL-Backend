@@ -307,8 +307,8 @@ class TemplateController extends Controller
 
                 $query->where(function ($q) use ($search) {
                     $q->whereRaw("CAST(major AS TEXT) LIKE ?", ["%{$search}%"])
-                    ->orWhereRaw("CAST(minor AS TEXT) LIKE ?", ["%{$search}%"])
-                    ->orWhereRaw("LOWER(status) LIKE ?", ["%{$search}%"]);
+                        ->orWhereRaw("CAST(minor AS TEXT) LIKE ?", ["%{$search}%"])
+                        ->orWhereRaw("LOWER(status) LIKE ?", ["%{$search}%"]);
                 });
             }
 
@@ -433,18 +433,27 @@ class TemplateController extends Controller
 
         DB::beginTransaction();
         try {
-            $template = Template::findOrFail($templateId);
-            $versionId = $request->input('version_id');
+            
+            $template = Template::with('versions')->findOrFail($templateId);
+            $versionId = $request->version_id;
             $userId = auth()->id();
-            $message = $request->input('message');
+            $message = $request->message;
 
-            // Unset old current
+            $version = $template->versions()
+                ->where('id', $versionId)
+                ->firstOrFail();
+
+            if ($version->is_current) {
+                return response()->json([
+                    'success' => true,
+                    'data'    => $version,
+                    'message' => 'This version is already current',
+                ]);
+            }
+
             $template->versions()->where('is_current',true)->update(['is_current'=>false]);
 
-            // Set new current
-            $version = TemplateVersion::findOrFail($versionId);
-            $version->is_current = true;
-            $version->save();
+            $version->update(['is_current'=> true]);
 
             TemplateChangeHistory::create([
                 'template_id'=>$template->id,
@@ -456,17 +465,38 @@ class TemplateController extends Controller
                     'html'=>$version->html,
                     'json'=>$version->json_data
                 ]),
-                'change_context'=>'change_current',
+                'change_context'=>'current',
                 'changed_by'=>$userId,
                 'message'=>$message ?? 'Changed current version manually'
             ]);
 
             DB::commit();
-            return response()->json(['success'=>true,'data'=>$version],200);
+            return response()->json(['success'=>true,'data'=>$version->fresh()],200);
 
         } catch(Exception $e) {
             DB::rollBack();
             return response()->json(['success'=>false,'message'=>$e->getMessage()],500);
         }
+    }
+
+    public function showVersion($templateId, $versionId)
+    {
+        $version = TemplateVersion::where('template_id', $templateId)
+            ->where('id', $versionId)
+            ->firstOrFail();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $version->id,
+                'version' => "{$version->major}.{$version->minor}",
+                'is_current' => $version->is_current,
+                'template' => [
+                    'css' => $version->css,
+                    'html' => $version->html,
+                    'json' => $version->json_data,
+                ],
+            ],
+        ]);
     }
 }
