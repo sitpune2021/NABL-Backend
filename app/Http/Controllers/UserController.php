@@ -14,7 +14,7 @@ use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Str;
 use App\Models\{Lab, LabLocation, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole};
-
+use Spatie\Permission\PermissionRegistrar;
 
 class UserController extends Controller
 {
@@ -27,21 +27,36 @@ class UserController extends Controller
             $currentUser = auth()->user();
 
             // Check if the logged-in user is a lab user
-            $labUser = \App\Models\LabUser::where('user_id', $currentUser->id)->first();
+            $labUser = LabUser::where('user_id', $currentUser->id)->first();
+            $lab = $labUser ? $labUser->lab_id : 0;
+            app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+            $currentRole = $currentUser->roles->first();
+            $currentRoleLevel = $currentRole?->level;
 
             $query = User::with([
                 'assignments.location',
                 'assignments.department',
                 'assignments.role',
                 'assignments.customPermissions.permission'
-            ]);
+            ])->where('id', '!=', $currentUser->id);
 
             if ($labUser) {
                 // Filter users by the same lab
                 $query->whereIn('id', function ($q) use ($labUser) {
                     $q->select('user_id')
-                        ->from('lab_users')
-                        ->where('lab_id', $labUser->lab_id);
+                    ->from('lab_users')
+                    ->where('lab_id', $labUser->lab_id);
+                });
+            } else {
+                $query->whereNotIn('id', function ($q) {
+                    $q->select('user_id')
+                    ->from('lab_users');
+                });
+            }
+
+            if ($currentRoleLevel !== null) {
+                $query->whereHas('roles', function ($q) use ($currentRoleLevel) {
+                    $q->where('level', '>=', $currentRoleLevel);
                 });
             }
 
@@ -146,6 +161,18 @@ class UserController extends Controller
                 'password'  => Hash::make('password123'), // default
             ]);
 
+            $labUser = LabUser::where('user_id', $authUser->id)->first();
+            $lab =  $labUser ? $labUser->lab_id  : 0;
+            app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+
+                $Role = Role::where('id', $request->role)
+                    ->where('lab_id', $lab)
+                    ->firstOrFail();
+
+                $user->syncRoles([$Role]);
+                $permissions = $Role->permissions->pluck('name')->toArray();
+                $user->syncPermissions($permissions);
+
             // 2️⃣ Assign roles
             foreach ($request->userRoles as $roleBlock) {
                 foreach ($roleBlock['department'] as $deptBlock) {
@@ -219,6 +246,11 @@ class UserController extends Controller
         if (!$user) {
             return response()->json(['message' => 'User not found'], 404);
         }
+        
+        $labUser = LabUser::where('user_id', $id)->first();
+        $lab = $labUser ? $labUser->lab_id : 0;
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        $role = $user->roles->first(); // Spatie role
 
         $userRoles = $user->assignments->groupBy(function($assignment) {
             return $assignment->location_id;
@@ -239,27 +271,28 @@ class UserController extends Controller
 
                 return [
                     'department_id' => $uldr->department_id,
-                    'roles' => $roles,
+                    'roles'         => $roles,
                 ];
             })->values();
 
             return [
                 'location_id' => $location_id,
-                'zone_id' => $zone_id,
-                'cluster_id' => $cluster_id,
-                'department' => $departments
+                'zone_id'     => $zone_id,
+                'cluster_id'  => $cluster_id,
+                'department'  => $departments
             ];
         })->values();
 
         $response = [
-            'id' => $user->id,
-            'name' => $user->name,
-            'username' => $user->username,
-            'email' => $user->email,
-            'phone' => $user->phone,
-            'dialCode' => $user->dial_code,
-            'address' => $user->address,
+            'id'        => $user->id,
+            'name'      => $user->name,
+            'username'  => $user->username,
+            'email'     => $user->email,
+            'phone'     => $user->phone,
+            'dialCode'  => $user->dial_code,
+            'address'   => $user->address,
             'signature' => $user->signature,
+            'role'      => $role ? $role->id : null,
             'userRoles' => $userRoles
         ];
 

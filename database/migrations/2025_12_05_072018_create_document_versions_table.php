@@ -18,7 +18,6 @@ return new class extends Migration
             $table->integer('minor_version')->default(0);
             $table->boolean('is_current')->default(false);
             $table->string('full_version'); // e.g., "2.5"
-            $table->string('number')->unique(); // code+dept+seq
             $table->string('copy_no')->nullable(); 
             $table->string('quantity_prepared')->nullable(); 
             $table->enum('workflow_state', ['draft','prepared','reviewed','approved','issued','effective','archived'])->nullable()->default('draft');

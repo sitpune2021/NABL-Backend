@@ -2,11 +2,14 @@
 
 namespace App\Services;
 use App\Models\NavigationItem;
+use Spatie\Permission\PermissionRegistrar;
+
 
 class NavigationAccessService
 {
-    public function getAccessModules($user): array
+    public function getAccessModules($user, $isGroup = true): array
     {
+        app(PermissionRegistrar::class)->setPermissionsTeamId(0);
         $labIds = $user->roles->pluck('lab_id');
         $isMaster = $labIds->filter()->isEmpty();
 
@@ -17,28 +20,44 @@ class NavigationAccessService
         ->orderBy('order')
         ->get();
 
-        return $this->mapToAccessModules($items, $isMaster);
+        return $this->mapToAccessModules($items, $isMaster, $isGroup);
     }
 
-    protected function mapToAccessModules($items, bool $isMaster): array
+    protected function mapToAccessModules($items, bool $isMaster, bool $isGroup): array
     {
         $modules = [];
         $relation = $isMaster ? 'childrenForMaster' : 'children';
-
-        foreach ($items as $item) {
-            foreach ($item->{$relation} ?? [] as $child) {
-                [$group, $module] = explode('.', str_replace('.list', '', $child->key));
-
-                $modules[$group][] = [
-                    'id' => $module,
-                    'key' => str_replace('.list', '', $child->key),
-                    'name' => $child->title . ' Management',
-                    'description' => 'Access control for ' . strtolower($child->title),
-                    'linkedMenuKeys' => [$child->key],
-                    'accessor' => $this->getDefaultAccessors($child->key),
-                ];
+        if ($isGroup) {
+            foreach ($items as $item) {
+                foreach ($item->{$relation} ?? [] as $child) {
+                    [$group, $module] = explode('.', str_replace('.list', '', $child->key));
+                    
+                    $modules[$group][] = [
+                        'id' => $module,
+                        'key' => str_replace('.list', '', $child->key),
+                        'name' => $child->title . ' Management',
+                        'description' => 'Access control for ' . strtolower($child->title),
+                        'linkedMenuKeys' => [$child->key],
+                        'accessor' => $this->getDefaultAccessors($child->key),
+                    ];
+                }
+            }
+        }else{
+            foreach ($items as $item) {
+                foreach ($item->{$relation} ?? [] as $child) {
+                    $modules[] = [
+                        'id' => str_replace([$item->key . '.', '.list'], '', $child->key),
+                        'key' => str_replace('.list', '', $child->key),
+                        'name' => $child->title . ' Management',
+                        'description' => 'Access control for ' . strtolower($child->title),
+                        'linkedMenuKeys' => [$child->key],
+                        'accessor' => $this->getDefaultAccessors($child->key),
+                    ];
+                }
             }
         }
+
+        
 
         return $modules;
     }

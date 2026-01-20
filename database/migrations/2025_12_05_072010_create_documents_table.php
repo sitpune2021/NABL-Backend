@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('documents', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('number')->nullable()->unique(); // code+dept+seq
             $table->foreignId('category_id')->constrained(); // reference to categories
             $table->enum('status', ['controlled', 'uncontrolled'])->default('controlled');
             $table->enum('mode', ['create', 'upload'])->default('create');

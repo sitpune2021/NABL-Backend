@@ -8,6 +8,7 @@ use Spatie\Permission\Models\Permission;
 use App\Models\NavigationItem;
 use App\Services\NavigationAccessService;
 use App\Models\LabUser;
+use Spatie\Permission\PermissionRegistrar;
 
 class RolePermissionsController extends Controller
 {
@@ -16,7 +17,23 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-            $roles = Role::with('users')->orderBy('level')->where('level', '>', auth()->user()->roles->min('level'))->get()->map(function ($role) {
+        $currentUser = auth()->user();
+        $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $lab =  $labUser ? $labUser->lab_id  : 0;
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        $minLevel = $currentUser->roles
+            ->where('lab_id', $lab)          // ✅ Current lab roles
+            ->min('level');
+
+        $roles = Role::query()
+            ->with(['users' => function ($q) {
+                $q->select('users.id', 'users.name');
+            }])
+            ->where('lab_id', $lab)                // ✅ MASTER ONLY
+            ->where('level', '>', $minLevel)    // ✅ RBAC hierarchy
+            ->orderBy('level')
+            ->get()
+            ->map(function ($role) {
                 return [
                     'id' => $role->id,
                     'name' => $role->name,
@@ -51,12 +68,19 @@ class RolePermissionsController extends Controller
             'accessRight' => 'required|array',
         ]);
 
+        $currentUser = auth()->user();
+          $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $lab =  $labUser ? $labUser->lab_id  : 0;
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
         $targetLevel = $request->level;
-        $maxLevel = Role::max('level') ?? 0;
+        $maxLevel = Role::where('lab_id', $lab)->max('level') ?? 0;
         if ($targetLevel > $maxLevel) {
             $insertLevel = $maxLevel + 1;
         } else {
-            Role::where('level', '>=', $targetLevel)->increment('level');
+            Role::where('lab_id', $lab)->where('level', '>=', $targetLevel)->increment('level');
             $insertLevel = $targetLevel;
         }
 
@@ -67,9 +91,10 @@ class RolePermissionsController extends Controller
             'name' => $request->name,
             'description' => $request->description ?? null,
             'level' => $insertLevel,
+            'lab_id' => $lab
         ]);
 
-        $modules = $service->getAccessModules($user);
+        $modules = $service->getAccessModules($user, false);
 
         // Prepare map of module id => full key
         $moduleMap = [];
@@ -96,6 +121,8 @@ class RolePermissionsController extends Controller
         // Assign permissions to role
         $role->syncPermissions($permissions);
 
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
         return response()->json([
             'message' => 'Role created successfully',
             'role' => [
@@ -112,7 +139,13 @@ class RolePermissionsController extends Controller
      */
     public function show($id)
     {
-        $role = Role::with('users')->findOrFail($id);
+        $currentUser = auth()->user();
+        $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $lab = $labUser ? $labUser->lab_id  : 0;
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+
+        $role = Role::where('lab_id', $lab)->with('users')->findOrFail($id);
 
         return response()->json([
             'id' => $role->id,
@@ -135,50 +168,57 @@ class RolePermissionsController extends Controller
      */
     public function update(Request $request, $id, NavigationAccessService $service)
     {
-        $role = Role::findOrFail($id);
+        $currentUser = auth()->user();
+        $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $lab = $labUser ? $labUser->lab_id  : 0;
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $role = Role::where('lab_id', $lab)->findOrFail($id);
 
         $request->validate([
             'accessRight' => 'required|array',
         ]);
-        // Fetch access modules (like seeder)
-        $modules = $service->getAccessModules(auth()->user());
 
-        // Prepare map of module id => full key
-        $moduleMap = [];
-        foreach ($modules as $module) {
-            $moduleMap[$module['id']] = $module['key'];
-        }
+        $modules = $service->getAccessModules(auth()->user(), false);
 
-        // Build permission strings from payload
+        // Map moduleId => full permission key
+        $moduleMap = collect($modules)->pluck('key', 'id')->toArray();
         $permissions = [];
         foreach ($request->accessRight as $moduleId => $actions) {
-            $fullKey = $moduleMap[$moduleId] ?? null;
-            if (!$fullKey) continue;
+            if (!isset($moduleMap[$moduleId])) {
+                continue;
+            }
 
             foreach ($actions as $action) {
-                $permissions[] = $fullKey . '.' . $action;
+                $permissions[] = $moduleMap[$moduleId] . '.' . $action;
             }
         }
 
-        // Create permissions if not exist
+        // ✅ Ensure permissions exist WITH guard_name
         foreach ($permissions as $permissionName) {
-            Permission::firstOrCreate(['name' => $permissionName]);
+            Permission::firstOrCreate([
+                'name'       => $permissionName,
+                'guard_name' => 'web',
+            ]);
         }
 
-        // Sync updated permissions to role
+        // ✅ Sync permissions to role
         $role->syncPermissions($permissions);
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return response()->json([
             'message' => 'Role updated successfully',
             'role' => [
-                'id' => $role->id,
-                'name' => $role->name,
+                'id'          => $role->id,
+                'name'        => $role->name,
                 'description' => $role->description,
                 'accessRight' => $request->accessRight,
             ],
         ]);
     }
-
 
     /**
      * Remove the specified resource from storage.

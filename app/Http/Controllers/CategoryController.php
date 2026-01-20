@@ -19,22 +19,19 @@ class CategoryController extends Controller
     {
         try {
             $user = auth()->user();
-
-            // Check if user is a lab user
             $labUser = LabUser::where('user_id', $user->id)->first();
             $query = Category::query();
-
-            if ($labUser) {
-                $query->whereIn('id', function($subQuery) use ($labUser) {
-                    $subQuery->select('category_id')
-                        ->from('documents')
-                        ->whereIn('id', function($q) use ($labUser) {
-                            $q->select('document_id')
-                                ->from('lab_clause_documents')
-                                ->where('lab_id', $labUser->lab_id); // Only for this lab
-                        });
-                });
-            }
+            // if ($labUser) {
+            //     $query->whereIn('id', function($subQuery) use ($labUser) {
+            //         $subQuery->select('category_id')
+            //             ->from('documents')
+            //             ->whereIn('id', function($q) use ($labUser) {
+            //                 $q->select('document_id')
+            //                     ->from('lab_clause_documents')
+            //                     ->where('lab_id', $labUser->lab_id); // Only for this lab
+            //             });
+            //     });
+            // }
 
             // Search
             if ($request->filled('query')) {

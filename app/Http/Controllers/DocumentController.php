@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Services\DocumentWorkflowService;
+use App\Services\DocumentAmendmentVersionService;
 
 class DocumentController extends Controller
 {
@@ -30,16 +32,16 @@ class DocumentController extends Controller
     {
         try {
             $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-            $query = Document::with('currentVersion.workflowLogs', 'category');
+            $labUser = LabUser::where('user_id', $user->id)->first();
+            $query = Document::with('currentVersion.workflowLogs','currentVersion.amendments', 'category');
 
-        if ($labUser) {
-                $query->whereIn('id', function($q) use ($labUser) {
-                    $q->select('document_id')
-                    ->from('lab_clause_documents')
-                    ->where('lab_id', $labUser->lab_id); // Only for this lab
-                });
-        }
+            if ($labUser) {
+                    $query->whereIn('id', function($q) use ($labUser) {
+                        $q->select('document_id')
+                        ->from('lab_clause_documents')
+                        ->where('lab_id', $labUser->lab_id); // Only for this lab
+                    });
+            }
 
             // Search
         if ($request->filled('query')) {
@@ -65,6 +67,13 @@ class DocumentController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $documents = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+           
+            $documents->getCollection()->transform(function ($doc) {
+                $doc->versions_count  = $doc->versions()->count();
+                $doc->current_vrsn = optional($doc->currentVersion)->full_version;
+
+                return $doc;
+            });
 
 
             return response()->json([
@@ -92,9 +101,9 @@ class DocumentController extends Controller
             'category_id' => 'required|integer|exists:categories,id',
             'department' => 'required|array|min:1',
             'department.*' => 'integer|exists:departments,id',
+            'number' => 'required|string|unique:documents,number',
 
             // Common
-            'number' => 'required|string|unique:document_versions,number',
             'name' => 'required|string|max:255',
             'status' => 'required|in:controlled,uncontrolled',
             'copy_no' => 'nullable|string|max:50',
@@ -106,7 +115,6 @@ class DocumentController extends Controller
             'notification_value' => 'nullable|integer|min:0',
 
             // Create mode only
-            'workflow_state' => 'nullable|in:draft,prepared,reviewed,approved,issued,effective',
             'editor_schema' => 'nullable|array',
             'form_fields' => 'nullable|array',
 
@@ -115,7 +123,6 @@ class DocumentController extends Controller
             'footer.template_id' => 'nullable|integer|exists:templates,id',
 
             // Workflow log (create only)
-            'step_type' => 'nullable|in:prepared,reviewed,approved,issued,effective',
             'performed_by' => 'nullable|exists:users,username',
             'performed_date' => 'nullable|date',
         ]);
@@ -140,6 +147,7 @@ class DocumentController extends Controller
                 'category_id' => $request->category_id,
                 'status' => $request->status,
                 'mode' => $request->mode,
+                'number' =>  $request->number, // Temporary, will update later
                 'owner_type' => $ownerType,
                 'owner_id' => $ownerId,
             ]);
@@ -156,7 +164,6 @@ class DocumentController extends Controller
                 'major_version' => 1,
                 'minor_version' => 0,
                 'full_version' => '1.0',
-                'number' => $request->number,
                 'copy_no' => $request->copy_no,
                 'quantity_prepared' => $request->quantity_prepared,
                 'is_current' => true,
@@ -166,10 +173,10 @@ class DocumentController extends Controller
                 'review_frequency' => $request->review_frequency,
                 'notification_unit' => $request->notification_unit,
                 'notification_value' => $request->notification_value,
+                'workflow_state' => $request->mode === 'create' ? 'prepared' : 'issued',
             ];
 
             if ($request->mode === 'create') {
-                $versionData['workflow_state'] = $request->workflow_state;
                 $versionData['editor_schema'] = $request->editor_schema;
                 $versionData['form_fields'] = $request->form_fields;
             }
@@ -195,15 +202,15 @@ class DocumentController extends Controller
             }
 
             // Workflow log
-            if ($request->mode === 'create' && $request->filled(['step_type', 'performed_by'])) {
+            if ($request->mode === 'create' && $request->filled(['performed_by'])) {
                 $performedBy = User::where('username', $request->performed_by)->first();
                 if ($performedBy) {
                     DocumentVersionWorkflowLog::create([
                         'document_version_id' => $version->id,
-                        'step_type' => $request->step_type,
-                        'step_status' => 'completed',
-                        'performed_by' => $performedBy->id,
-                        'comments' => 'Initial workflow step',
+                        'step_type' => 'prepared',
+                        'step_status' => 'pending',
+                        'performed_by' =>auth()->id(),
+                        'comments' => 'Initial preparation',
                         'created_at' => $request->performed_date ?? now(),
                     ]);
                 }
@@ -255,7 +262,7 @@ class DocumentController extends Controller
                 'category_id' => $document->category_id,
                 'department' => $document->departments->pluck('id')->toArray(),
 
-                'number' => $version->number,
+                'number' => $document->number,
                 'name' => $document->name,
                 'status' => $document->status,
                 'copy_no' => $version->copy_no,
@@ -331,7 +338,7 @@ class DocumentController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request,string $id,DocumentAmendmentVersionService $service)
     {
         $validator = Validator::make($request->all(), [
             // Document
@@ -344,16 +351,25 @@ class DocumentController extends Controller
             'department.*' => 'integer|exists:departments,id',
 
             // Document Version
-            'number' => 'sometimes|string|unique:document_versions,number,' . $id . ',document_id',
             'copy_no' => 'nullable|string|max:50',
             'quantity_prepared' => 'nullable|integer|min:0',
             'effective_date' => 'nullable|date',
             'schedule' => 'nullable|array',
-
-            // ✅ Correct frequency fields
             'review_frequency' => 'nullable|string',
             'notification_unit' => 'nullable|string',
             'notification_value' => 'nullable|integer|min:0',
+
+            // Create mode only
+            'editor_schema' => 'nullable|array',
+            'form_fields' => 'nullable|array',
+
+            // Templates (create only)
+            'header.template_id' => 'nullable|integer|exists:templates,id',
+            'footer.template_id' => 'nullable|integer|exists:templates,id',
+
+            // Amendment (MANDATORY)
+            'amendment_type' => 'required|in:major,minor',
+            'amendment_reason' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -365,48 +381,72 @@ class DocumentController extends Controller
 
         DB::beginTransaction();
         try {
-            $document = Document::findOrFail($id);
+            $document = Document::with('currentVersion')->findOrFail($id);
             $document->update($request->only([
                 'name',
                 'category_id',
-                'status',
+                'status'
             ]));
 
             if ($request->has('department')) {
-                DocumentDepartment::where('document_id', $document->id)->delete();
-
-                foreach ($request->department as $deptId) {
-                    DocumentDepartment::create([
-                        'document_id' => $document->id,
-                        'department_id' => $deptId,
-                    ]);
-                }
+                $document->departments()->sync($request->department);
             }
-
             $version = $document->currentVersion;
-            if ($version) {
-                $version->update($request->only([
-                    'number',
-                    'copy_no',
-                    'quantity_prepared',
-                    'effective_date',
-                    'schedule',
-                    'review_frequency',
-                    'notification_unit',
-                    'notification_value',
-                ]));
-            }
+            $version->update($request->only([
+                'copy_no',
+                'quantity_prepared',
+                'effective_date',
+                'schedule',
+                'review_frequency',
+                'notification_unit',
+                'notification_value',
+            ]));
 
+            if ($document->mode === 'create') {
+                $version->update($request->only([
+                    'editor_schema',
+                    'form_fields'
+                ]));
+                DocumentVersionTemplate::where('document_version_id', $version->id)
+                    ->whereIn('type', ['header', 'footer'])
+                    ->delete();
+
+                foreach (['header', 'footer'] as $type) {
+                    $templateId = data_get($request, "$type.template_id");
+
+                    if ($templateId) {
+                        $template = Template::find($templateId);
+
+                        DocumentVersionTemplate::create([
+                            'document_version_id' => $version->id,
+                            'template_id' => $template->id,
+                            'template_version_id' => $template?->currentVersion?->id,
+                            'type' => $type,
+                        ]);
+                    }
+                }
+                $newVersion = $service->handle(
+                    $version,
+                    $request->amendment_type,
+                    auth()->id(),
+                    $request->amendment_reason
+                );
+            }
             DB::commit();
 
             return response()->json([
-                'success' => true,
-                'data' => $document->load([
-                    'departments',
-                    'versions',
-                ])
-            ], 200);
-
+                    'success' => true,
+                    'message' => !isset($newVersion)
+                        ? 'Updated successfully'
+                        : ($newVersion->id === $version->id
+                            ? 'Amendment recorded'
+                            : 'New version created'),
+                    'data' => $document->load([
+                        'departments',
+                        'versions',
+                    ])
+                ], 200);
+                
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -418,7 +458,7 @@ class DocumentController extends Controller
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to update document',
+                'message' => $e->getMessage(),
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -588,5 +628,26 @@ class DocumentController extends Controller
             'headers' => $headers,
             'rows' => $rows
         ], 200);
+    }
+
+    public function workflowAction(Request $request,DocumentWorkflowService $workflow) 
+    {
+        $request->validate([
+            'document_version_id' => 'required|exists:document_versions,id',
+            'action' => 'required|in:pending,completed,sent_back,rejected',
+            'comments' => 'nullable|string',
+        ]);
+
+        $state = $workflow->act(
+            $request->document_version_id,
+            $request->action,
+            auth()->id(),
+            $request->comments
+        );
+
+        return response()->json([
+            'success' => true,
+            'workflow_state' => $state
+        ]);
     }
 }

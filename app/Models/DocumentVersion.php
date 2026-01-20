@@ -15,7 +15,6 @@ class DocumentVersion extends Model
         'minor_version',
         'is_current',
         'full_version',
-        'number',
         'copy_no',
         'quantity_prepared',
         'workflow_state',
@@ -56,11 +55,6 @@ class DocumentVersion extends Model
     public function workflowLogs()
     {
         return $this->hasMany(DocumentVersionWorkflowLog::class);
-    }
-
-    public function issues()
-    {
-        return $this->hasMany(DocumentIssue::class);
     }
 
     public function history()

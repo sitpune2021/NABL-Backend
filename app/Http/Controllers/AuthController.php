@@ -7,6 +7,8 @@ use App\Models\User;
 use App\Models\LabUser;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\Log;
+use Spatie\Permission\PermissionRegistrar;
+
 
 class AuthController extends Controller
 {
@@ -29,11 +31,15 @@ class AuthController extends Controller
 
         $labUser = LabUser::with('lab')->where('user_id', $user->id)->first();
         $user->lab = $labUser ? $labUser->lab : null;
-        $user->load(['assignments.location.cluster.zone', 'assignments.department', 'assignments.role']);
+        // $user->load(['assignments.location.cluster.zone', 'assignments.department', 'assignments.role']);
 
-        if ($user->is_super_admin) {
-            $user->roles_structure = [];
-        } else {
+            // Check if the logged-in user is a lab user
+            $lab = $labUser ? $labUser->lab_id : 0;
+            app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+            $currentRole = $user->roles->first();
+
+        if (!$user->is_super_admin) 
+        {
             $user->roles_structure = $user->assignments
                 ->groupBy('location_id')
                 ->map(function ($locationGroup) {
@@ -67,17 +73,16 @@ class AuthController extends Controller
                 })->values();
         }
 
-        $user->makeHidden(['password', 'remember_token']);
+        $user->makeHidden(['password', 'remember_token', 'dial_code', 'phone', 'address', 'email_verified_at', 'created_at', 'updated_at']);
+        $user['authority'] = $currentRole->name;
+
 
         Log::info('User logged in', ['user_id' => $user->id, 'ip' => $request->ip()]);
-
-        return response()->json([
-            'success' => true,
+        
+        return $this->success([
             'user'    => $user,
-            'roles'   => $user->getRoleNames(),       // Spatie roles
-            'permissions' => $user->getAllPermissions()->pluck('name'), // Spatie permissions
             'token'   => $token
-        ]);
+        ], 'Login successful');
     }
 
 

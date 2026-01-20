@@ -100,11 +100,14 @@ class UserSeeder extends Seeder
      |-------------------------------------------------------------*/
     private function assignMasterRoleByLevel(User $user, int $level): void
     {
+        app(PermissionRegistrar::class)->setPermissionsTeamId(0); // MASTER
 
         $role = Role::where('level', $level)
-            ->whereNull('lab_id') // MASTER ONLY
+            ->where('lab_id', 0)
             ->firstOrFail();
 
         $user->syncRoles([$role]);
+        $permissions = $role->permissions->pluck('name')->toArray();
+        $user->syncPermissions($permissions); // <-- THIS populates model_has_permissions
     }
 }

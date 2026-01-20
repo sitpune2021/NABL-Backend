@@ -53,7 +53,7 @@ class RolePermissionSeeder extends Seeder
                 [
                     'name' => $roleData['name'],
                     'description' => $roleData['description'],
-                    'lab_id' => null, // MASTER LEVEL
+                    'lab_id' => 0, // MASTER LEVEL
                 ],
                 [
                     'level' => $roleData['level'],
