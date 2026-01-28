@@ -9,7 +9,7 @@ class Lab extends Model
 {
      use SoftDeletes;
 
-    protected $fillable = ['name','labType','labCode','address'];
+    protected $fillable = ['name','lab_type','lab_code','address', 'loaction_count', 'user_count'];
 
     public function contacts()
     {

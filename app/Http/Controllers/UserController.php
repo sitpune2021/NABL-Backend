@@ -165,13 +165,15 @@ class UserController extends Controller
             $lab =  $labUser ? $labUser->lab_id  : 0;
             app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
 
+            if(!$labUser){
                 $Role = Role::where('id', $request->role)
-                    ->where('lab_id', $lab)
-                    ->firstOrFail();
+                                ->where('lab_id', $lab)
+                                ->firstOrFail();
 
                 $user->syncRoles([$Role]);
                 $permissions = $Role->permissions->pluck('name')->toArray();
                 $user->syncPermissions($permissions);
+            }
 
             // 2️⃣ Assign roles
             foreach ($request->userRoles as $roleBlock) {
@@ -179,7 +181,9 @@ class UserController extends Controller
                     foreach ($deptBlock['roles'] as $roleItem) {
                         $roleId = $roleItem['value'];
                         $role = Role::find($roleId);
-                        $user->assignRole($role);
+                        $user->syncRoles([$role]);
+                        $permissions = $role->permissions->pluck('name')->toArray();
+                        $user->syncPermissions($permissions);
 
                         $uldr = UserLocationDepartmentRole::create([
                             'user_id'       => $user->id,
@@ -189,14 +193,7 @@ class UserController extends Controller
                             'status'        => 'active',
                             'position_type' => 'permanent',
                         ]);
-
-                        foreach ($role->permissions as $perm) {
-                            UserCustomPermission::create([
-                                'user_location_department_role_id' => $uldr->id,
-                                'permission_id' => $perm->id,
-                                'is_allowed'    => true,
-                            ]);
-                        }
+                        
                     }
                 }
             }
@@ -296,7 +293,7 @@ class UserController extends Controller
             'userRoles' => $userRoles
         ];
 
-        return response()->json($response);
+        return response()->json(['data'=>$response]);
     }
 
 
