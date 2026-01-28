@@ -22,25 +22,38 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use App\Services\DocumentWorkflowService;
 use App\Services\DocumentAmendmentVersionService;
+use Spatie\Permission\PermissionRegistrar;
 
 class DocumentController extends Controller
 {
+    private function labContext(): array
+    {
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        return [
+            'lab_id'     => $labUser?->lab_id,
+            'user_id' => $labUser->user_id ?? null,
+            'owner_type' => $labUser ? 'lab' : 'super_admin',
+            'owner_id'   => $labUser?->lab_id,
+        ];
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         try {
-            $user = auth()->user();
-            $labUser = LabUser::where('user_id', $user->id)->first();
+            $ctx = $this->labContext();
             $query = Document::with('currentVersion.workflowLogs','currentVersion.amendments', 'category');
 
-            if ($labUser) {
-                    $query->whereIn('id', function($q) use ($labUser) {
-                        $q->select('document_id')
-                        ->from('lab_clause_documents')
-                        ->where('lab_id', $labUser->lab_id); // Only for this lab
-                    });
+            if ($ctx['lab_id'] == null) {
+                 $query->where('owner_type', 'super_admin')
+                ->whereNull('owner_id');
+            } else {
+                $query->where('owner_type', 'lab')
+              ->where('owner_id', $ctx['lab_id']);
             }
 
             // Search
@@ -136,11 +149,7 @@ class DocumentController extends Controller
 
         DB::beginTransaction();
         try {
-            $authUser = auth()->user();
-            $labUser = LabUser::where('user_id', $authUser->id)->first();
-
-            $ownerType = $labUser ? 'lab' : 'super_admin';
-            $ownerId = $labUser?->lab_id;
+            $ctx = $this->labContext();
 
             $document = Document::create([
                 'name' => $request->name,
@@ -148,8 +157,8 @@ class DocumentController extends Controller
                 'status' => $request->status,
                 'mode' => $request->mode,
                 'number' =>  $request->number, // Temporary, will update later
-                'owner_type' => $ownerType,
-                'owner_id' => $ownerId,
+                'owner_type' => $ctx['owner_type'],
+                'owner_id'   => $ctx['owner_id'],
             ]);
 
             foreach ($request->department as $deptId) {
@@ -216,10 +225,10 @@ class DocumentController extends Controller
                 }
             }
 
-            if ($labUser) {
+            if ($ctx['owner_id'] != null) {
                 LabDocuments::create([
-                    'user_id' => $labUser->user_id,
-                    'lab_id' => $labUser->lab_id,
+                    'user_id' => $ctx['user_id'],
+                    'lab_id' => $ctx['owner_id'],
                     'document_version_id' => $version->id,
                 ]);
             }
@@ -280,6 +289,9 @@ class DocumentController extends Controller
                     'workflow_state' => $version->workflow_state,
                     'editor_schema' => $version->editor_schema,
                     'form_fields' => $version->form_fields,
+                    'issue_no' => $version->major_version,
+                    'amendment_no' => $version->minor_version,
+                    'full_version' => $version->full_version
                 ];
 
                 // Header & Footer templates
@@ -304,15 +316,32 @@ class DocumentController extends Controller
                 }
 
                 // Workflow log (latest)
-                $log = $version->workflowLogs->sortByDesc('created_at')->first();
+                $logs = $version->workflowLogs->sortByDesc('created_at');
+                $map = [
+                    'prepared' => 'preparedBy',
+                    'reviewed' => 'reviewedBy',
+                    'approved' => 'approvedBy',
+                    'issued' => 'issuedBy',
+                    'effective' => 'effectiveBY'
+                ];
 
-                if ($log) {
-                    $payload += [
-                        'step_type' => $log->step_type,
-                        'performed_by' => $log->user?->username,
-                        'performed_date' => $log->created_at,
+                $workflowPayload = [];
+                $currentUser = auth()->user();
+                $labUser = LabUser::where('user_id', $currentUser->id)->first();
+                $lab =  $labUser ? $labUser->lab_id  : 0;
+                app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+
+                foreach ($logs as $log) {
+                    if (!isset($map[$log->step_type])) continue;
+
+                    $workflowPayload[$map[$log->step_type]] = [
+                        'name' => $log->user->name,
+                        'designation' => optional($log->user->roles->first())->name,
+                        'signature' => $log->user->signature == null ? $log->user->name : $log->user->signature ,
+                        $log->step_type => $log->created_at,
                     ];
                 }
+                $payload['workflow'] = $workflowPayload;
             }
 
         return response()->json([

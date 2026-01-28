@@ -69,7 +69,7 @@ class RolePermissionsController extends Controller
         ]);
 
         $currentUser = auth()->user();
-          $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $labUser = LabUser::where('user_id', $currentUser->id)->first();
         $lab =  $labUser ? $labUser->lab_id  : 0;
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($lab);

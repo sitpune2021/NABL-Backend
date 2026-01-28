@@ -18,7 +18,9 @@ use App\Models\{Lab,
     DocumentVersionWorkflowLog,
     LabDocumentsEntryData,
     Template,
-    LabDocuments};
+    LabDocuments,
+    Category,
+    SubCategory};
 use Illuminate\Support\Facades\{DB, Hash};
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
@@ -283,71 +285,104 @@ class LabController extends Controller
 
     protected function cloneDocumentForLab(Document $original, Lab $lab)
     {
-        $baseNumber = preg_replace('/-\d+$/', '', $original->number); // remove trailing -number
-        $suffix = 1;
-        // 1. Clone document
-        while (Document::where('number', $baseNumber . '-' . $suffix)->exists()) 
-        {
-            $suffix++;
-        }
+        return DB::transaction(function () use ($original, $lab) {
 
-        $newNumber = $baseNumber . '-' . $suffix;
+            $masterCategory = $original->category;
 
-        $newDocument = $original->replicate();
-        $newDocument->owner_type = 'lab';
-        $newDocument->owner_id = $lab->id;
-        $newDocument->number = $newNumber; // set new unique number
-        $newDocument->save();
+            $category = Category::firstOrCreate(
+                [
+                    'parent_id'  => $masterCategory->id,
+                    'owner_type' => 'lab',
+                    'owner_id'   => $lab->id,
+                ],
+                [
+                    'name'       => $masterCategory->name,
+                    'identifier' => $masterCategory->identifier,
+                ]
+            );
+
+            $subCategoryMap = []; // master_sub_id => lab_sub_id
+
+            foreach ($masterCategory->subCategories as $masterSub) {
+
+                $labSub = SubCategory::firstOrCreate(
+                    [
+                        'parent_id'  => $masterSub->id,
+                        'cat_id'     => $category->id, // 🔑 lab category
+                        'owner_type' => 'lab',
+                        'owner_id'   => $lab->id,
+                    ],
+                    [
+                        'name'       => $masterSub->name,
+                        'identifier' => $masterSub->identifier,
+                    ]
+                );
+
+                $subCategoryMap[$masterSub->id] = $labSub->id;
+            }
+
+            $baseNumber = preg_replace('/-\d+$/', '', $original->number); // remove trailing -number
+            $suffix = 1;
+            // 1. Clone document
+            while (Document::where('number', "{$baseNumber}-{$suffix}")->exists()) {
+                $suffix++;
+            }
+
+
+            $newDocument = $original->replicate();
+            $newDocument->category_id = $category->id;
+            $newDocument->owner_type  = 'lab';
+            $newDocument->owner_id    = $lab->id;
+            $newDocument->number      = "{$baseNumber}-{$suffix}";
+            $newDocument->save();
 
         // 2. Clone departments
-        foreach ($original->departments as $dept) {
-            DocumentDepartment::create([
-                'document_id' => $newDocument->id,
-                'department_id' => $dept->id,
-            ]);
-        }
+            foreach ($original->departments as $dept) {
+                DocumentDepartment::create([
+                    'document_id'   => $newDocument->id,
+                    'department_id' => $dept->id,
+                ]);
+            }
 
         // 3. Clone versions (all fields)
-        foreach ($original->versions as $version) {
-            $newVersion = $version->replicate();
-            $newVersion->document_id = $newDocument->id;
-            $newVersion->is_current = true;
-            $newVersion->save();
+            foreach ($original->versions as $version) {
+                $newVersion = $version->replicate();
+                $newVersion->document_id = $newDocument->id;
+                $newVersion->is_current = true;
+                $newVersion->save();
 
             // templates
-            foreach ($version->templates as $template) {
-                DocumentVersionTemplate::create([
-                    'document_version_id' => $newVersion->id,
-                    'template_id' => $template->template_id,
-                    'template_version_id' => $template->template_version_id,
-                    'type' => $template->type,
-                ]);
-            }
+                foreach ($version->templates as $template) {
+                    DocumentVersionTemplate::create([
+                        'document_version_id' => $newVersion->id,
+                        'template_id'         => $template->template_id,
+                        'template_version_id' => $template->template_version_id,
+                        'type'                => $template->type,
+                    ]);
+                }
 
             // workflow logs
-            foreach ($version->workflowLogs as $log) {
-                DocumentVersionWorkflowLog::create([
+                foreach ($version->workflowLogs as $log) {
+                    DocumentVersionWorkflowLog::create([
+                        'document_version_id' => $newVersion->id,
+                        'step_type'           => $log->step_type,
+                        'step_status'         => $log->step_status,
+                        'performed_by'        => $log->performed_by,
+                        'comments'            => $log->comments,
+                        'created_at'          => $log->created_at,
+                        'updated_at'          => $log->updated_at,
+                    ]);
+                }
+
+                LabDocuments::create([
+                    'user_id'             => auth()->id(),
+                    'lab_id'              => $lab->id,
                     'document_version_id' => $newVersion->id,
-                    'step_type' => $log->step_type,
-                    'step_status' => $log->step_status,
-                    'performed_by' => $log->performed_by,
-                    'comments' => $log->comments,
-                    'created_at' => $log->created_at,
-                    'updated_at' => $log->updated_at,
                 ]);
             }
 
-            // lab documents tracking
-            $authUser = auth()->user();
-
-            LabDocuments::create([
-                'user_id' => $authUser->id ?? null,
-                'lab_id' => $lab->id,
-                'document_version_id' => $newVersion->id,
-            ]);
-        }
-
-        return $newDocument;
+            return $newDocument;
+        });
     }
 
     /**
@@ -373,6 +408,7 @@ class LabController extends Controller
                 'phone' => $user->phone,
                 'is_super_admin' => $user->is_super_admin,
             ]);
+
             $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
             $data = [
                 'name'     => $lab->name,
