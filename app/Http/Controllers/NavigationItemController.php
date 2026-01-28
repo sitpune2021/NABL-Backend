@@ -7,6 +7,8 @@ use App\Models\NavigationItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use App\Services\NavigationAccessService;
+use Spatie\Permission\PermissionRegistrar;
+use App\Models\LabUser;
 
 class NavigationItemController extends Controller
 {
@@ -21,9 +23,12 @@ class NavigationItemController extends Controller
             ->whereNull('parent_id')
             ->orderBy('order')
             ->get();
-
-        $permissions = $user->getAllPermissions()
-            ->pluck('name')
+            
+        $labUser = LabUser::where('user_id', $user->id)->first();
+        $lab =  $labUser ? $labUser->lab_id  : 0;
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        $role = $user->roles()->first(); // or by role name
+        $permissions =  $role->permissions->pluck('name')
             ->filter(function ($perm) {
                 return str_ends_with($perm, '.list');
             })

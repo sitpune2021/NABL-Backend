@@ -12,5 +12,7 @@ class Department extends Model
     protected $fillable = [
         'name',
         'identifier',
+        'owner_type',
+        'owner_id'
     ];
 }

@@ -429,16 +429,12 @@ class TemplateController extends Controller
             'message'=>'nullable|string|max:255'
         ]);
 
-        if ($validator->fails()) { return response()->json([
-                'success' => false,
-                'errors'  => $validator->errors(),
-            ], 422);
-        }
+        if ($validator->fails()) return response()->json(['success'=>false,'errors'=>$validator->errors()],422);
 
         DB::beginTransaction();
         try {
+            
             $template = Template::with('versions')->findOrFail($templateId);
-
             $versionId = $request->version_id;
             $userId = auth()->id();
             $message = $request->message;
@@ -454,9 +450,8 @@ class TemplateController extends Controller
                     'message' => 'This version is already current',
                 ]);
             }
-            $template->versions()
-                ->where('is_current',true)
-                ->update(['is_current'=>false]);
+
+            $template->versions()->where('is_current',true)->update(['is_current'=>false]);
 
             $version->update(['is_current'=> true]);
 
@@ -476,10 +471,9 @@ class TemplateController extends Controller
             ]);
 
             DB::commit();
+            return response()->json(['success'=>true,'data'=>$version->fresh()],200);
 
-            return response()->json(['success'=>true,'data'=>$version->fresh(),
-            ], 200);
-        } catch(\Exception $e) {
+        } catch(Exception $e) {
             DB::rollBack();
             return response()->json(['success'=>false,'message'=>$e->getMessage()],500);
         }

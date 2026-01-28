@@ -30,19 +30,19 @@ class StoreUserRequest extends FormRequest
             'address'   => 'nullable|string',
             'signature' => 'nullable|string',
 
-            'userRoles' => 'required|array|min:1',
+            // 'userRoles' => 'required|array|min:1',
 
-            'userRoles.*.location_id'   => 'required|integer',
-            'userRoles.*.zone_id'       => 'required|integer',
-            'userRoles.*.cluster_id'    => 'required|integer',
+            // 'userRoles.*.location_id'   => 'required|integer',
+            // 'userRoles.*.zone_id'       => 'required|integer',
+            // 'userRoles.*.cluster_id'    => 'required|integer',
 
-            'userRoles.*.department'    => 'required|array|min:1',
-            'userRoles.*.department.*.department_id' => 'required|integer',
+            // 'userRoles.*.department'    => 'required|array|min:1',
+            // 'userRoles.*.department.*.department_id' => 'required|integer',
 
-            'userRoles.*.department.*.roles' => 'required|array|min:1',
-            'userRoles.*.department.*.roles.*.value' => 'required|integer',
+            // 'userRoles.*.department.*.roles' => 'required|array|min:1',
+            // 'userRoles.*.department.*.roles.*.value' => 'required|integer',
 
-            'userRoles.*.department.*.permissions' => 'nullable|array',
+            // 'userRoles.*.department.*.permissions' => 'nullable|array',
         ];
     }
 }

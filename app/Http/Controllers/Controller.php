@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+use Illuminate\Http\JsonResponse;
 
 abstract class Controller
 {
@@ -16,7 +17,7 @@ abstract class Controller
     protected function error(string $message = 'Error', int $status = 400, $errors = []): JsonResponse
     {
         return response()->json([
-            'status' => 'error',
+            'status' => 'failed',
             'message' => $message,
             'errors' => $errors
         ], $status);

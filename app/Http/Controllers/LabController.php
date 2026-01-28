@@ -18,11 +18,14 @@ use App\Models\{Lab,
     DocumentVersionWorkflowLog,
     LabDocumentsEntryData,
     Template,
-    LabDocuments};
+    LabDocuments,
+    Category,
+    SubCategory};
 use Illuminate\Support\Facades\{DB, Hash};
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class LabController extends Controller
 {
@@ -91,6 +94,23 @@ class LabController extends Controller
                     'is_primary' => $phone['is_primary'] ?? false,
                 ]);
             }
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+            $masterRoles = Role::where('lab_id', 0)->get();
+            foreach ($masterRoles as $masterRole) {
+                    $labRole = Role::Create(
+                        [
+                            'name'       => $masterRole->name,
+                            'lab_id'     => $lab->id,
+                            'level'       => $masterRole->level,
+                            'description' => $masterRole->description,
+                        ]
+                    );
+                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
+                    $labRole->syncPermissions(
+                        $masterRole->permissions->pluck('name')->toArray()
+                    );
+            }
 
             $primaryEmail = collect($request->emails ?? [])->firstWhere('is_primary', true);
             $primaryPhone = collect($request->phones ?? [])->firstWhere('is_primary', true);
@@ -108,6 +128,15 @@ class LabController extends Controller
                         'is_super_admin' => true,
                     ]
                 );
+                app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id); // MASTER
+
+                $labSuperAdminRole = Role::where('level', 1)
+                    ->where('lab_id', $lab->id)
+                    ->firstOrFail();
+
+                $user->syncRoles([$labSuperAdminRole]);
+                $permissions = $labSuperAdminRole->permissions->pluck('name')->toArray();
+                $user->syncPermissions($permissions);
 
                 LabUser::firstOrCreate([
                     'lab_id' => $lab->id,
@@ -161,7 +190,19 @@ class LabController extends Controller
                         ]
                     );
 
-                    $admin->assignRole('Admin');
+                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id); // MASTER
+
+                    $labadminRole = Role::where('level', 2)
+                        ->where('lab_id', $lab->id)
+                        ->firstOrFail();
+
+                    $admin->syncRoles([$labadminRole]);
+                    $adminpermissions = $labadminRole->permissions->pluck('name')->toArray();
+                    $admin->syncPermissions($adminpermissions);
+                    LabUser::firstOrCreate([
+                        'lab_id' => $lab->id,
+                        'user_id' => $admin->id,
+                    ]);
 
                     $departmentId = $loc['departments'][0]['name'] ?? null;
                     if ($departmentId) {
@@ -169,7 +210,10 @@ class LabController extends Controller
                             $admin->id,
                             $loc['location_name'],
                             $departmentId,
-                            Role::where('name', 'Admin')->first()->id
+                            Role::where([
+                                'level' => 2,
+                                'lab_id' => $lab->id
+                            ])->first()->id
                         );
                     }
                 }
@@ -240,73 +284,106 @@ class LabController extends Controller
 
 
     protected function cloneDocumentForLab(Document $original, Lab $lab)
-{
-    // 1. Clone document
-    $newDocument = $original->replicate();
-    $newDocument->owner_type = 'lab';
-    $newDocument->owner_id = $lab->id;
-    $newDocument->save();
+    {
+        return DB::transaction(function () use ($original, $lab) {
 
-    // 2. Clone departments
-    foreach ($original->departments as $dept) {
-        DocumentDepartment::create([
-            'document_id' => $newDocument->id,
-            'department_id' => $dept->id,
-        ]);
+            $masterCategory = $original->category;
+
+            $category = Category::firstOrCreate(
+                [
+                    'parent_id'  => $masterCategory->id,
+                    'owner_type' => 'lab',
+                    'owner_id'   => $lab->id,
+                ],
+                [
+                    'name'       => $masterCategory->name,
+                    'identifier' => $masterCategory->identifier,
+                ]
+            );
+
+            $subCategoryMap = []; // master_sub_id => lab_sub_id
+
+            foreach ($masterCategory->subCategories as $masterSub) {
+
+                $labSub = SubCategory::firstOrCreate(
+                    [
+                        'parent_id'  => $masterSub->id,
+                        'cat_id'     => $category->id, // 🔑 lab category
+                        'owner_type' => 'lab',
+                        'owner_id'   => $lab->id,
+                    ],
+                    [
+                        'name'       => $masterSub->name,
+                        'identifier' => $masterSub->identifier,
+                    ]
+                );
+
+                $subCategoryMap[$masterSub->id] = $labSub->id;
+            }
+
+            $baseNumber = preg_replace('/-\d+$/', '', $original->number); // remove trailing -number
+            $suffix = 1;
+            // 1. Clone document
+            while (Document::where('number', "{$baseNumber}-{$suffix}")->exists()) {
+                $suffix++;
+            }
+
+
+            $newDocument = $original->replicate();
+            $newDocument->category_id = $category->id;
+            $newDocument->owner_type  = 'lab';
+            $newDocument->owner_id    = $lab->id;
+            $newDocument->number      = "{$baseNumber}-{$suffix}";
+            $newDocument->save();
+
+        // 2. Clone departments
+            foreach ($original->departments as $dept) {
+                DocumentDepartment::create([
+                    'document_id'   => $newDocument->id,
+                    'department_id' => $dept->id,
+                ]);
+            }
+
+        // 3. Clone versions (all fields)
+            foreach ($original->versions as $version) {
+                $newVersion = $version->replicate();
+                $newVersion->document_id = $newDocument->id;
+                $newVersion->is_current = true;
+                $newVersion->save();
+
+            // templates
+                foreach ($version->templates as $template) {
+                    DocumentVersionTemplate::create([
+                        'document_version_id' => $newVersion->id,
+                        'template_id'         => $template->template_id,
+                        'template_version_id' => $template->template_version_id,
+                        'type'                => $template->type,
+                    ]);
+                }
+
+            // workflow logs
+                foreach ($version->workflowLogs as $log) {
+                    DocumentVersionWorkflowLog::create([
+                        'document_version_id' => $newVersion->id,
+                        'step_type'           => $log->step_type,
+                        'step_status'         => $log->step_status,
+                        'performed_by'        => $log->performed_by,
+                        'comments'            => $log->comments,
+                        'created_at'          => $log->created_at,
+                        'updated_at'          => $log->updated_at,
+                    ]);
+                }
+
+                LabDocuments::create([
+                    'user_id'             => auth()->id(),
+                    'lab_id'              => $lab->id,
+                    'document_version_id' => $newVersion->id,
+                ]);
+            }
+
+            return $newDocument;
+        });
     }
-
-    // 3. Clone versions (all fields)
-    foreach ($original->versions as $version) {
-        $baseNumber = preg_replace('/-\d+$/', '', $version->number); // remove trailing -number
-        $suffix = 1;
-
-        while (DocumentVersion::where('number', $baseNumber . '-' . $suffix)->exists()) {
-            $suffix++;
-        }
-
-        $newNumber = $baseNumber . '-' . $suffix;
-
-        $newVersion = $version->replicate();
-        $newVersion->document_id = $newDocument->id;
-        $newVersion->number = $newNumber; // set new unique number
-        $newVersion->is_current = true;
-        $newVersion->save();
-
-        // templates
-        foreach ($version->templates as $template) {
-            DocumentVersionTemplate::create([
-                'document_version_id' => $newVersion->id,
-                'template_id' => $template->template_id,
-                'template_version_id' => $template->template_version_id,
-                'type' => $template->type,
-            ]);
-        }
-
-        // workflow logs
-        foreach ($version->workflowLogs as $log) {
-            DocumentVersionWorkflowLog::create([
-                'document_version_id' => $newVersion->id,
-                'step_type' => $log->step_type,
-                'step_status' => $log->step_status,
-                'performed_by' => $log->performed_by,
-                'comments' => $log->comments,
-                'created_at' => $log->created_at,
-                'updated_at' => $log->updated_at,
-            ]);
-        }
-
-        // lab documents tracking
-        $authUser = auth()->user();
-
-        LabDocuments::create([
-            'user_id' => $authUser->id ?? null,
-            'lab_id' => $lab->id,
-            'document_version_id' => $newVersion->id,
-        ]);
-    }
-
-    return $newDocument;
-}
 
     /**
      * Display the specified lab.
@@ -332,6 +409,7 @@ class LabController extends Controller
                 'is_super_admin' => $user->is_super_admin,
             ]);
 
+            $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
             $data = [
                 'name'     => $lab->name,
                 'labType'  => $lab->labType,
@@ -374,6 +452,7 @@ class LabController extends Controller
                         'zone_name'     => $location->locationRecord->cluster->zone_id ?? null,
                         'cluster_name'  => $location->locationRecord->cluster->id ?? null,
                         'location_name' => $location->location_id,
+                        'location_name_og' => $location->locationRecord->name,
 
                         'prefix'    => $location->prefix,
                         'shortName' => $location->shortName,
@@ -418,7 +497,7 @@ class LabController extends Controller
                         ])->values(),
                     ];
                 })->values(),
-
+                'standard_id' => $standardId,
                 'selectedClauses' => $lab->labClauseDocuments->flatMap(function($doc) {
                     if ($doc->document_id) {
                         return ["doc-{$doc->clause_id}-{$doc->document_id}"];
@@ -591,7 +670,7 @@ class LabController extends Controller
             // 5. Update LabClauseDocuments
             $lab->labClauseDocuments()->delete(); // remove old clause documents
 
-            if (!empty($request->selectedClauses)) {
+            if (!empty($request->selectedClauses) && $request->standard_id) {
                 $records = [];
                 $standardId = $request->standard_id;
 

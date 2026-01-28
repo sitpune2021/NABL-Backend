@@ -15,7 +15,8 @@ class Document extends Model
         'status',
         'mode',
         'owner_type',
-        'owner_id'
+        'owner_id',
+        'number',
     ];
 
     public function category()
@@ -47,6 +48,19 @@ class Document extends Model
       public function clauseLinks()
     {
         return $this->hasMany(ClauseDocumentLink::class, 'document_id', 'id');
+    }
+
+    public function setAsCurrentVersion(DocumentVersion $version)
+    {
+        $this->versions()->update(['is_current' => false]);
+        $version->update(['is_current' => true]);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->whereHas('currentVersion', function ($q) {
+            $q->where('workflow_state', '!=', 'archived');
+        });
     }
 
 }
