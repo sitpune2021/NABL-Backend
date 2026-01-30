@@ -78,7 +78,7 @@ class SubCategoryController extends Controller
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
-            $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $subCategories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             return response()->json([
                 'success' => true,

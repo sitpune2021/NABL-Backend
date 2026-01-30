@@ -72,9 +72,11 @@ class LabController extends Controller
             // 1. Create Lab
             $lab = Lab::create([
                 'name' => $request->name,
-                'labType' => $request->labType,
-                'labCode' => $request->labCode,
+                'lab_type' => $request->lab_type,
+                'lab_code' => $request->lab_code,
                 'address' => $request->address ?? null,
+                'loaction_count' => $request->loaction_count,
+                'user_count' => $request->user_count
             ]);
 
             // 2. Lab Contacts
@@ -412,9 +414,11 @@ class LabController extends Controller
             $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
             $data = [
                 'name'     => $lab->name,
-                'labType'  => $lab->labType,
-                'labCode'  => $lab->labCode,
+                'lab_type'  => $lab->lab_type,
+                'lab_code'  => $lab->lab_code,
                 'address'  => $lab->address,
+                'loaction_count' => $lab->loaction_count,
+                'user_count' => $lab->user_count,
 
                 // Lab Emails
                 'emails' => $lab->contacts
@@ -542,9 +546,11 @@ class LabController extends Controller
             // 1. Update Lab basic info
             $lab->update([
                 'name' => $request->name,
-                'labType' => $request->labType,
-                'labCode' => $request->labCode,
+                'lab_type' => $request->lab_type,
+                'lab_code' => $request->lab_code,
                 'address' => $request->address ?? null,
+                'loaction_count' => $request->loaction_count,
+                'user_count' => $request->user_count
             ]);
 
             // 2. Update Lab contacts (emails + phones)
