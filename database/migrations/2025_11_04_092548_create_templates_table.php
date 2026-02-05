@@ -13,9 +13,12 @@ return new class extends Migration
     {
         Schema::create('templates', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('parent_id')->nullable()->constrained('departments')->nullOnDelete()->comment('master departments id if this is a lab override');
             $table->string('name');
             $table->enum('type', ['header', 'footer'])->nullable();
             $table->enum('status', ['draft', 'published', 'archived'])->default('draft'); 
+            $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
+            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
             $table->timestamps();
             $table->softDeletes();
         });

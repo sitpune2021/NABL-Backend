@@ -3,12 +3,13 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\NavigationItem;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use App\Services\NavigationAccessService;
 use Spatie\Permission\PermissionRegistrar;
-use App\Models\LabUser;
+
+use App\Services\NavigationAccessService;
+
+use App\Models\{NavigationItem, LabUser};
 
 class NavigationItemController extends Controller
 {
@@ -18,14 +19,17 @@ class NavigationItemController extends Controller
     public function index()
     {
         $user = Auth::user();
-
+        $labUser = LabUser::where('user_id', $user->id)->first();
+        $lab =  $labUser ? $labUser->lab_id  : 0;
+        $isLabUser = !is_null($labUser);
+        request()->attributes->set('isLabUser', $isLabUser);
         $items = NavigationItem::with('children')
+            ->when($lab > 0 , fn ($q) => $q->forLab())
+            ->when($lab == 0 , fn ($q) => $q->forMaster())
             ->whereNull('parent_id')
             ->orderBy('order')
             ->get();
-            
-        $labUser = LabUser::where('user_id', $user->id)->first();
-        $lab =  $labUser ? $labUser->lab_id  : 0;
+
         app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         $role = $user->roles()->first(); // or by role name
         $permissions =  $role->permissions->pluck('name')
@@ -213,8 +217,13 @@ class NavigationItemController extends Controller
 
     public function accessModules(NavigationAccessService $service)
     {
+        $user = Auth::user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+        $lab =  $labUser ? $labUser->lab_id  : 0;
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+        $isMaster =  $labUser ? true : false;
         return response()->json(
-            $service->getAccessModules(auth()->user()),
+            $service->getAccessModules($isMaster),
             200,
             [],
             JSON_PRETTY_PRINT

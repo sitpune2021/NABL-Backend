@@ -26,7 +26,6 @@ class Lab extends Model
         return $this->contacts()->where('type', 'phone');
     }
 
-
     public function location()
     {
         return $this->hasMany(LabLocation::class);

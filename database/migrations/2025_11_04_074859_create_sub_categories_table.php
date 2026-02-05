@@ -11,26 +11,15 @@ return new class extends Migration
     {
         Schema::create('sub_categories', function (Blueprint $table) {
             $table->id();
-
-            $table->foreignId('cat_id')
-                ->constrained('categories')
-                ->cascadeOnDelete();
-
-            $table->foreignId('parent_id')
-                ->nullable()
-                ->constrained('sub_categories')
-                ->nullOnDelete()
-                ->comment('master sub-category id if this is a lab override');
+            $table->foreignId('cat_id')->constrained('categories')->cascadeOnDelete();
+            $table->foreignId('parent_id')->nullable()->constrained('sub_categories')->nullOnDelete()->comment('master sub-category id if this is a lab override');
 
             $table->string('name');
             $table->string('identifier');
 
-            $table->enum('owner_type', ['super_admin', 'lab'])
-                ->default('super_admin');
+            $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
 
-            $table->foreignId('owner_id')
-                ->nullable()
-                ->comment('lab_id when owner_type = lab');
+            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
 
             $table->timestamps();
             $table->softDeletes();

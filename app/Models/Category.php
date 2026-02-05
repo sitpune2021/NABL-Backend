@@ -78,4 +78,25 @@ class Category extends Model
     {
         return $this->owner_type === 'lab' && $this->parent_id === null;
     }
+
+    public function scopeAccessible($query, $labId)
+    {
+        return $query->where(function ($q) use ($labId) {
+
+            $q->where(function ($lab) use ($labId) {
+                $lab->where('owner_type', 'lab')
+                    ->where('owner_id', $labId);
+            })
+
+            ->orWhere(function ($master) use ($labId) {
+                $master->where('owner_type', 'super_admin')
+                    ->whereDoesntHave('overrides', function ($override) use ($labId) {
+                        $override->where('owner_type', 'lab')
+                                ->where('owner_id', $labId);
+                    });
+            });
+
+        });
+    }
+
 }
