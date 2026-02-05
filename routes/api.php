@@ -51,6 +51,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('clusters', ClusterController::class);
     Route::apiResource('locations', LocationController::class);
     Route::apiResource('labs', LabController::class);
+    Route::get('lab-assignments', [LabController::class, 'labAssignments']);
+    Route::post('lab-assignments', [LabController::class, 'assignmentUserRole']);
     Route::apiResource('standards', StandardController::class);
     Route::get('standards-current', [StandardController::class, 'currentStandards']);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);

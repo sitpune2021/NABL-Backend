@@ -3,21 +3,43 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Department;
+
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
+use App\Models\{LabUser, Department};
+
 class DepartmentController extends Controller
 {
+    private function labContext(): array
+    {
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        return [
+            'lab_id'     => $labUser?->lab_id,
+            'owner_type' => $labUser ? 'lab' : 'super_admin',
+            'owner_id'   => $labUser?->lab_id,
+        ];
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         try {
+            $ctx = $this->labContext();
             $query = Department::query();
+
+            if ($ctx['lab_id'] == null) {
+                $query->SuperAdmin();
+            } else {
+                $query->ForLab($ctx['lab_id']);
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -43,18 +65,17 @@ class DepartmentController extends Controller
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
-            $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-
+            $departments = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             return response()->json([
                 'status' => true,
-                'data' => $categories->items(),
-                'total' => $categories->total()
+                'data' => $departments->items(),
+                'total' => $departments->total()
             ], 200);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch categories',
+                'message' => 'Failed to fetch departments',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -65,9 +86,35 @@ class DepartmentController extends Controller
      */
     public function store(Request $request)
     {
+        $ctx = $this->labContext();
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:categories,name',
-            'identifier' => 'required|string|max:255|unique:categories,identifier',
+            'name' => ['required'],
+            'identifier' => ['required'],
+            'parent_id' => [
+                'nullable',
+                'exists:departments,id',
+                fn ($attr, $value, $fail) =>
+                    $value && $ctx['owner_type'] !== 'lab'
+                        ? $fail('Only lab users can override master departments')
+                        : null
+            ],
+            'name' => [
+                'required',
+                Rule::unique('departments')->where(fn ($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                      ->where('owner_id', $ctx['owner_id'])
+                      ->whereNull('deleted_at')
+                ),
+            ],
+            'identifier' => [
+                'required',
+                Rule::unique('departments')->where(fn ($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                      ->where('owner_id', $ctx['owner_id'])
+                      ->whereNull('deleted_at')
+                ),
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -79,7 +126,13 @@ class DepartmentController extends Controller
 
         DB::beginTransaction();
         try {
-            $department = Department::create($request->only(['name', 'identifier']));
+            $department = Department::create([
+                'parent_id'  => $request->parent_id,
+                'name'       => $request->name,
+                'identifier' => $request->identifier,
+                'owner_type' => $ctx['owner_type'],
+                'owner_id'   => $ctx['owner_id'],
+            ]);
             DB::commit();
 
             return response()->json([
@@ -102,7 +155,8 @@ class DepartmentController extends Controller
     public function show(string $id)
     {
         try {
-            $department = Department::findOrFail($id);
+            $ctx = $this->labContext();
+            $department = Department::accessible($ctx['lab_id'])->findOrFail($id);
             return response()->json([
                 'success' => true,
                 'data' => $department
@@ -126,9 +180,25 @@ class DepartmentController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $department = Department::findOrFail($id);
+        
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:categories,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:categories,identifier,' . $id,
+            'name' => [
+                'sometimes',
+                Rule::unique('departments')->ignore($id)->where(fn ($q) =>
+                    $q->where('owner_type', $department->owner_type)
+                      ->where('owner_id', $department->owner_id)
+                      ->whereNull('deleted_at')
+                ),
+            ],
+            'identifier' => [
+                'sometimes',
+                Rule::unique('departments')->ignore($id)->where(fn ($q) =>
+                    $q->where('owner_type', $department->owner_type)
+                      ->where('owner_id', $department->owner_id)
+                      ->whereNull('deleted_at')
+                ),
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -140,7 +210,6 @@ class DepartmentController extends Controller
 
         DB::beginTransaction();
         try {
-            $department = Department::findOrFail($id);
             $department->update($request->only(['name', 'identifier']));
             DB::commit();
 
@@ -172,6 +241,13 @@ class DepartmentController extends Controller
         DB::beginTransaction();
         try {
             $department = Department::findOrFail($id);
+            if ($department->is_master) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Master department cannot be deleted',
+                ], 403);
+            }
+
             $department->delete();
             DB::commit();
 

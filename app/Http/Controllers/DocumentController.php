@@ -2,6 +2,18 @@
 
 namespace App\Http\Controllers;
 
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+
+use App\Services\DocumentAmendmentVersionService;
+use Spatie\Permission\PermissionRegistrar;
+use App\Services\DocumentWorkflowService;
+
 use App\Models\{
     Document,
     DocumentDepartment,
@@ -12,17 +24,7 @@ use App\Models\{
     LabUser,
     Template,
     User,
-    LabDocuments
 };
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
-use App\Services\DocumentWorkflowService;
-use App\Services\DocumentAmendmentVersionService;
-use Spatie\Permission\PermissionRegistrar;
 
 class DocumentController extends Controller
 {
@@ -200,6 +202,7 @@ class DocumentController extends Controller
                     if ($templateId) {
                         $template = Template::find($templateId);
 
+                        
                         DocumentVersionTemplate::create([
                             'document_version_id' => $version->id,
                             'template_id' => $template->id,
@@ -223,14 +226,6 @@ class DocumentController extends Controller
                         'created_at' => $request->performed_date ?? now(),
                     ]);
                 }
-            }
-
-            if ($ctx['owner_id'] != null) {
-                LabDocuments::create([
-                    'user_id' => $ctx['user_id'],
-                    'lab_id' => $ctx['owner_id'],
-                    'document_version_id' => $version->id,
-                ]);
             }
 
             DB::commit();
@@ -550,27 +545,27 @@ class DocumentController extends Controller
             $fieldsEntry = $validated['fields_entry'];
 
             // Handle file upload only if document mode is not 'create' and file exists
-        if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
-            $file = $request->file('fields_entry.document');
+            if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
+                $file = $request->file('fields_entry.document');
 
-                // Generate unique filename
-            $filename = time() . '_' . $file->getClientOriginalName();
+                    // Generate unique filename
+                $filename = time() . '_' . $file->getClientOriginalName();
 
-                // Store file in storage/app/private/documents
-            $file->storeAs('documents', $filename, 'public');
+                    // Store file in storage/app/private/documents
+                $file->storeAs('documents', $filename, 'public');
 
-                // Replace file object with filename
-                $fieldsEntry['document'] = $filename;
-        }
+                    // Replace file object with filename
+                    $fieldsEntry['document'] = $filename;
+            }
 
-            // Create LabDocumentsEntryData
-        $entry = LabDocumentsEntryData::create([
-            'user_id' => $labUser->user_id,
-            'lab_id' => $labUser->lab_id,
-                'document_id' => $validated['document_id'],
-                'document_version_id' => $document->currentVersion?->id ?? $validated['document_id'],
-                'fields_entry' => json_encode($fieldsEntry),
-        ]);
+                // Create LabDocumentsEntryData
+            $entry = LabDocumentsEntryData::create([
+                'user_id' => $labUser->user_id,
+                'lab_id' => $labUser->lab_id,
+                    'document_id' => $validated['document_id'],
+                    'document_version_id' => $document->currentVersion?->id ?? $validated['document_id'],
+                    'fields_entry' => json_encode($fieldsEntry),
+            ]);
 
             DB::commit(); // Commit transaction
 

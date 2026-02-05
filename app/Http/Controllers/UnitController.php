@@ -3,21 +3,42 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Unit;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
+use App\Models\{Unit, LabUser};
+
 class UnitController extends Controller
 {
+    private function labContext(): array
+    {
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        return [
+            'lab_id'     => $labUser?->lab_id,
+            'owner_type' => $labUser ? 'lab' : 'super_admin',
+            'owner_id'   => $labUser?->lab_id,
+        ];
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         try {
+            $ctx = $this->labContext();
             $query = Unit::query();
+
+            if ($ctx['lab_id'] == null) {
+                $query->SuperAdmin();
+            } else {
+                $query->ForLab($ctx['lab_id']);
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -45,7 +66,6 @@ class UnitController extends Controller
 
             $units = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-
             return response()->json([
                 'status' => true,
                 'data' => $units->items(),
@@ -66,8 +86,27 @@ class UnitController extends Controller
      */
     public function store(Request $request)
     {
+        $ctx = $this->labContext();
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:units,name',
+            'name' => 'required',
+            'parent_id' => [
+                'nullable',
+                'exists:units,id',
+                // only labs can override
+                fn ($attr, $value, $fail) =>
+                    $value && $ctx['owner_type'] !== 'lab'
+                        ? $fail('Only lab users can override master units')
+                        : null
+            ],
+            'name' => [
+                'required',
+                Rule::unique('units')->where(fn ($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                      ->where('owner_id', $ctx['owner_id'])
+                      ->whereNull('deleted_at')
+                ),
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -79,7 +118,12 @@ class UnitController extends Controller
 
         DB::beginTransaction();
         try {
-            $unit = Unit::create($request->only(['name']));
+            $unit = Unit::create([
+                'parent_id'  => $request->parent_id,
+                'name'       => $request->name,
+                'owner_type' => $ctx['owner_type'],
+                'owner_id'   => $ctx['owner_id'],
+            ]);
             DB::commit();
 
             return response()->json([
@@ -103,7 +147,8 @@ class UnitController extends Controller
     public function show(string $id)
     {
         try {
-            $unit = Unit::findOrFail($id);
+            $ctx = $this->labContext();
+            $unit = Unit::accessible($ctx['lab_id'])->findOrFail($id);
             return response()->json([
                 'success' => true,
                 'data' => $unit
@@ -127,8 +172,17 @@ class UnitController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $unit = Unit::findOrFail($id);
+
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:units,name,' . $id,
+            'name' => [
+                'sometimes',
+                Rule::unique('units')->ignore($id)->where(fn ($q) =>
+                    $q->where('owner_type', $unit->owner_type)
+                      ->where('owner_id', $unit->owner_id)
+                      ->whereNull('deleted_at')
+                ),
+            ],
         ]);
 
         if ($validator->fails()) {
@@ -140,7 +194,6 @@ class UnitController extends Controller
 
         DB::beginTransaction();
         try {
-            $unit = Unit::findOrFail($id);
             $unit->update($request->only(['name']));
             DB::commit();
 
@@ -173,6 +226,13 @@ class UnitController extends Controller
         DB::beginTransaction();
         try {
             $unit = Unit::findOrFail($id);
+            if ($department->is_master) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Master unit cannot be deleted',
+                ], 403);
+            }
+
             $unit->delete();
             DB::commit();
 
