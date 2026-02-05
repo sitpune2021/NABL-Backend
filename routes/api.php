@@ -44,6 +44,7 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('units', UnitController::class);
     Route::apiResource('instruments', InstrumentController::class);
     Route::apiResource('templates', TemplateController::class);
+    Route::post('templates/change-status', [TemplateController::class, 'changeStatus']);
     Route::get('templates/versions/{templateId}',[TemplateController::class, 'versions'] );
     Route::get('templates/{templateId}/versions/{versionId}', [TemplateController::class, 'showVersion']);
     Route::put('templates/{templateId}/change-current-version',[TemplateController::class, 'changeCurrentVersion']);

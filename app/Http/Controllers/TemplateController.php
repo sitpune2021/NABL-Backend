@@ -16,60 +16,63 @@ class TemplateController extends Controller
     /**
      * List templates with current version info
      */
-    public function index(Request $request)
-    {
-        try {
-            $query = Template::with('currentVersion')->withTrashed();
+   public function index(Request $request)
+{
+    try {
+        $query = Template::with('currentVersion')->withTrashed();
+     
+        if ($request->filled('status')) {
+            $query->whereIn('status', (array) $request->status);
+        }
+        // Search
+        if ($request->filled('query')) {
+            $search = strtolower($request->input('query'));
 
-            // Search
-            if ($request->filled('query')) {
-                $search = strtolower($request->input('query'));
-
-                $query->where(function ($q) use ($search) {
-                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
-                        ->orWhereRaw('LOWER(type) LIKE ?', ["%{$search}%"]);
-                });
-            }
-
-            // Pagination
-            $pageSize = (int) $request->input('pageSize', 10);
-            $pageIndex = (int) $request->input('pageIndex', 1);
-
-            $templates = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-
-            $data = $templates->map(function ($template) {
-                $currentVersion = $template->currentVersion;
-
-                $createdBy = TemplateChangeHistory::where('template_id', $template->id)
-                    ->where('change_context', 'create')
-                    ->orderBy('created_at','asc')
-                    ->first();
-
-                $lastChangedBy = TemplateChangeHistory::where('template_id', $template->id)
-                    ->where('template_version_id', $currentVersion?->id)
-                    ->orderBy('created_at','desc')
-                    ->first();
-
-                return [
-                    'id' => $template->id,
-                    'name' => $template->name,
-                    'type' => $template->type,
-                    'status' => $template->status,
-                    'versions_count' => $template->versions()->count(),
-                    'current_version' => $currentVersion ? "{$currentVersion->major}.{$currentVersion->minor}" : null,
-                    'created_by' => $createdBy?->changed_by,
-                    'last_changed_by' => $lastChangedBy?->changed_by,
-                    'deleted_at' => $template->deleted_at,
-                    'updated_at' => $template->updated_at,
-                    'template' => [
-                        'css' => $currentVersion?->css,
-                        'html' => $currentVersion?->html,
-                        'json' => $currentVersion?->json_data,
-                    ]
-                ];
+            $query->where(function ($q) use ($search) {
+                $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                  ->orWhereRaw('LOWER(type) LIKE ?', ["%{$search}%"]);
             });
+        }
 
-            return response()->json([
+        // Pagination
+        $pageSize = (int) $request->input('pageSize', 10);
+        $pageIndex = (int) $request->input('pageIndex', 1);
+
+        $templates = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+
+        $data = $templates->map(function ($template) {
+            $currentVersion = $template->currentVersion;
+
+            $createdBy = TemplateChangeHistory::where('template_id', $template->id)
+                ->where('change_context', 'create')
+                ->orderBy('created_at','asc')
+                ->first();
+
+            $lastChangedBy = TemplateChangeHistory::where('template_id', $template->id)
+                ->where('template_version_id', $currentVersion?->id)
+                ->orderBy('created_at','desc')
+                ->first();
+
+            return [
+                'id' => $template->id,
+                'name' => $template->name,
+                'type' => $template->type,
+                'status' => $template->status,
+                'versions_count' => $template->versions()->count(),
+                'current_version' => $currentVersion ? "{$currentVersion->major}.{$currentVersion->minor}" : null,
+                'created_by' => $createdBy?->changed_by,
+                'last_changed_by' => $lastChangedBy?->changed_by,
+                'deleted_at' => $template->deleted_at,
+                'updated_at' => $template->updated_at,
+                'template' => [
+                    'css' => $currentVersion?->css,
+                    'html' => $currentVersion?->html,
+                    'json' => $currentVersion?->json_data,
+                ]
+            ];
+        });
+
+        return response()->json([
                 'success'=>true,
                 'data'=>$data,
                 'total'=>$templates->total()
@@ -77,8 +80,8 @@ class TemplateController extends Controller
 
         } catch(Exception $e) {
             return response()->json(['success'=>false,'message'=>$e->getMessage()],500);
-        }
     }
+}
 
     /**
      * Store a new template with initial version
@@ -499,4 +502,40 @@ class TemplateController extends Controller
             ],
         ]);
     }
+    public function changeStatus(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'template_id' => 'required|exists:templates,id',
+        'status' => 'required|in:published,archived',
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'errors' => $validator->errors(),
+        ], 422);
+    }
+
+    try {
+        $template = Template::findOrFail($request->template_id);
+
+        $template->status = $request->status;
+        $template->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Template status updated successfully',
+            'data' => [
+                'id' => $template->id,
+                'status' => $template->status,
+            ],
+        ], 200);
+
+    } catch (Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage(),
+        ], 500);
+    }
+}
 }
