@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-use App\Models\{Template, TemplateVersion, TemplateChangeHistory, LabUser};
+use App\Models\{Template, TemplateVersion, TemplateChangeHistory, LabUser, DocumentVersionTemplate, DocumentVersion};
 
 class TemplateController extends Controller
 {
@@ -218,6 +218,36 @@ class TemplateController extends Controller
         }
     }
 
+    private function applyTemplateToDocuments(Template $template, TemplateVersion $newVersion)
+    {
+        $docTemplates = DocumentVersionTemplate::where('template_id', $template->id)
+            ->get();
+
+        foreach ($docTemplates as $docTemplate) {
+            $docVersion = $docTemplate->version;
+
+            if (!$docVersion) continue;
+
+            $docTemplate->update([
+                'template_version_id' => $newVersion->id,
+            ]);
+
+            $schema = $docVersion->editor_schema ?? [];
+
+            $type = $docTemplate->type;
+
+            $schema[$type] = [
+                'html' => $newVersion->html,
+                'css'  => $newVersion->css,
+                'json' => $newVersion->json_data,
+            ];
+
+            $docVersion->update([
+                'editor_schema' => $schema,
+            ]);
+        }
+    }
+
     /**
      * Update template (minor/major) and versioning
      */
@@ -240,6 +270,7 @@ class TemplateController extends Controller
             'template.json'=>'nullable|array',
             'change_type'=>'required|in:minor,major',
             'message'=>'nullable|string|max:255',
+            'apply_all_documents'=>'sometimes|boolean',
         ]);
 
         if ($validator->fails()) return response()->json(['success'=>false,'errors'=>$validator->errors()],422);
@@ -248,14 +279,15 @@ class TemplateController extends Controller
         try {
             $data = $validator->validated();
             $userId = Auth::user()->id;
+            $applyAll = $request->boolean('apply_all_documents');
 
             $template->update([
-                'name'=>$data['name'] ?? $template->name,
-                'type'=>$data['type'] ?? $template->type,
+                'name' => $data['name'] ?? $template->name,
+                'type' => $data['type'] ?? $template->type,
             ]);
 
             // Versioning
-            $currentVersion = $template->versions()->where('is_current',true)->first();
+            $currentVersion = $template->versions()->where('is_current',true)->lockForUpdate()->firstOrFail();
             $major = $currentVersion->major;
             $minor = $currentVersion->minor;
 
@@ -281,6 +313,10 @@ class TemplateController extends Controller
                 'message'=>$data['message'] ?? null,
                 'changed_by'=>$userId,
             ]);
+
+            if ($data['change_type'] === 'minor' && $applyAll) {
+                $this->applyTemplateToDocuments($template, $version);
+            }
 
             TemplateChangeHistory::create([
                 'template_id'=>$template->id,
@@ -492,7 +528,7 @@ class TemplateController extends Controller
 
         DB::beginTransaction();
         try {
-            
+
             $template = Template::with('versions')->findOrFail($templateId);
             $versionId = $request->version_id;
             $userId = auth()->id();
