@@ -38,6 +38,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
 
     Route::apiResource('users', UserController::class);
     Route::apiResource('roles', RolePermissionsController::class);
+    Route::get('/categories/lab-master', [CategoryController::class, 'labMasterCategories']);
+    Route::post('categories/append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
     Route::apiResource('categories', CategoryController::class);
     Route::apiResource('sub-categories', SubCategoryController::class);
     Route::apiResource('departments', DepartmentController::class);

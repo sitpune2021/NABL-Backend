@@ -269,4 +269,83 @@ class CategoryController extends Controller
             ], 500);
         }
     }
+
+    public function labMasterCategories(Request $request)
+    {
+        $labId = $request->query('lab_id');
+
+        if (!$labId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'lab_id is required'
+            ], 422);
+        }
+
+        $categories = Category::query()
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $categories
+        ]);
+    }
+
+
+    public function appendLabCategoryToMaster(Request $request)
+{
+    $validator = Validator::make($request->all(), [
+        'lab_category_id' => ['required', 'exists:categories,id'],
+    ]);
+
+    if ($validator->fails()) {
+        return response()->json([
+            'success' => false,
+            'errors' => $validator->errors(),
+        ], 422);
+    }
+
+    $labCategory = Category::where('id', $request->lab_category_id)
+        ->where('owner_type', 'lab')
+        ->whereNull('parent_id')
+        ->firstOrFail();
+
+    $alreadyExists = Category::where('owner_type', 'super_admin')
+        ->where('parent_id', $labCategory->id)
+        ->exists();
+
+    if ($alreadyExists) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Category already appended to master',
+        ], 409);
+    }
+
+    DB::beginTransaction();
+    try {
+        $masterCategory = Category::create([
+            'parent_id'  => $labCategory->id,
+            'name'       => $labCategory->name,
+            'identifier' => $labCategory->identifier,
+            'owner_type' => 'super_admin',
+            'owner_id'   => null,
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'success' => true,
+            'data' => $masterCategory,
+        ], 201);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to append category',
+        ], 500);
+    }
+}
 }
