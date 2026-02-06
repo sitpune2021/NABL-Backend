@@ -333,6 +333,7 @@ class CategoryController extends Controller
             'identifier' => $labCategory->identifier,
             'owner_type' => 'super_admin',
             'owner_id'   => null,
+            'appended_from_lab_id' => $labCategory->owner_id,
         ]);
 
         DB::commit();
