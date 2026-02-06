@@ -13,15 +13,36 @@ return new class extends Migration
     {
         Schema::create('departments', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('parent_id')->nullable()->constrained('departments')->nullOnDelete()->comment('master departments id if this is a lab override');
             $table->string('name');
             $table->string('identifier'); 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
             $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
-            $table->unique(['name', 'owner_type', 'owner_id']);
-            $table->unique(['identifier', 'owner_type', 'owner_id']);
             $table->timestamps();
             $table->softDeletes();
         });
+
+        /**
+         * 🔐 POSTGRESQL PARTIAL UNIQUE INDEXES
+         */
+
+        // ✅ Super admin: unique identifier
+        DB::statement("
+            CREATE UNIQUE INDEX departments_unique_super_admin_identifier
+            ON departments (identifier)
+            WHERE owner_type = 'super_admin'
+              AND owner_id IS NULL
+              AND deleted_at IS NULL
+        ");
+
+
+        // ✅ Lab-wise unique identifier
+        DB::statement("
+            CREATE UNIQUE INDEX departments_unique_lab_identifier
+            ON departments (identifier, owner_id)
+            WHERE owner_type = 'lab'
+              AND deleted_at IS NULL
+        ");
     }
 
     /**
@@ -29,6 +50,9 @@ return new class extends Migration
      */
     public function down(): void
     {
+        DB::statement('DROP INDEX IF EXISTS departments_unique_super_admin_identifier');
+        DB::statement('DROP INDEX IF EXISTS departments_unique_lab_identifier');
+
         Schema::dropIfExists('departments');
     }
 };

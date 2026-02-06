@@ -37,4 +37,59 @@ class SubCategory extends Model
         return $query->where('owner_type', 'lab')
                      ->where('owner_id', $labId);
     }
+
+        // 🔗 Lab override → Master category
+    public function parent()
+    {
+        return $this->belongsTo(Category::class, 'parent_id');
+    }
+
+    // 🔁 Master category → Lab overrides
+    public function overrides()
+    {
+        return $this->hasMany(Category::class, 'parent_id');
+    }
+
+    public function getIsMasterAttribute(): bool
+    {
+        return $this->owner_type === 'super_admin';
+    }
+
+    /**
+     * Is lab override of a master category
+     */
+    public function getIsOverrideAttribute(): bool
+    {
+        return $this->owner_type === 'lab' && $this->parent_id !== null;
+    }
+
+    /**
+     * Is lab-only custom category
+     */
+    public function getIsCustomAttribute(): bool
+    {
+        return $this->owner_type === 'lab' && $this->parent_id === null;
+    }
+
+    public function scopeAccessible($query, $labId)
+    {
+        return $query->where(function ($q) use ($labId) {
+
+            // 1️⃣ All lab categories (custom + overrides)
+            $q->where(function ($lab) use ($labId) {
+                $lab->where('owner_type', 'lab')
+                    ->where('owner_id', $labId);
+            })
+
+            // 2️⃣ Master categories NOT overridden by this lab
+            ->orWhere(function ($master) use ($labId) {
+                $master->where('owner_type', 'super_admin')
+                    ->whereDoesntHave('overrides', function ($override) use ($labId) {
+                        $override->where('owner_type', 'lab')
+                                ->where('owner_id', $labId);
+                    });
+            });
+
+        });
+    }
 }

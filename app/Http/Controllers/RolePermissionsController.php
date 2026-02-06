@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
-use App\Models\NavigationItem;
-use App\Services\NavigationAccessService;
-use App\Models\LabUser;
 use Spatie\Permission\PermissionRegistrar;
+
+use App\Services\NavigationAccessService;
+
+use App\Models\{LabUser, NavigationItem};
 
 class RolePermissionsController extends Controller
 {
@@ -71,6 +73,7 @@ class RolePermissionsController extends Controller
         $currentUser = auth()->user();
         $labUser = LabUser::where('user_id', $currentUser->id)->first();
         $lab =  $labUser ? $labUser->lab_id  : 0;
+        $isMaster =  $labUser ? false : true;
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -84,8 +87,7 @@ class RolePermissionsController extends Controller
             $insertLevel = $targetLevel;
         }
 
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
+        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
 
         $role = Role::create([
             'name' => $request->name,
@@ -94,7 +96,7 @@ class RolePermissionsController extends Controller
             'lab_id' => $lab
         ]);
 
-        $modules = $service->getAccessModules($user, false);
+        $modules = $service->getAccessModules($isMaster, false);
 
         // Prepare map of module id => full key
         $moduleMap = [];
@@ -171,6 +173,7 @@ class RolePermissionsController extends Controller
         $currentUser = auth()->user();
         $labUser = LabUser::where('user_id', $currentUser->id)->first();
         $lab = $labUser ? $labUser->lab_id  : 0;
+        $isMaster =  $labUser ? false : true;
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -181,7 +184,7 @@ class RolePermissionsController extends Controller
             'accessRight' => 'required|array',
         ]);
 
-        $modules = $service->getAccessModules(auth()->user(), false);
+        $modules = $service->getAccessModules($isMaster, false);
 
         // Map moduleId => full permission key
         $moduleMap = collect($modules)->pluck('key', 'id')->toArray();

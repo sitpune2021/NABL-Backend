@@ -2,7 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Support\Str;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{DB, Hash};
+
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
+
+use App\Services\NavigationAccessService;
+
 use App\Models\{Lab, 
     LabLocation, 
     LabLocationDepartment, 
@@ -18,17 +27,27 @@ use App\Models\{Lab,
     DocumentVersionWorkflowLog,
     LabDocumentsEntryData,
     Template,
-    LabDocuments,
     Category,
-    SubCategory};
-use Illuminate\Support\Facades\{DB, Hash};
-use Illuminate\Support\Str;
-use Spatie\Permission\Models\Permission;
-use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
+    SubCategory,
+    Department, 
+    Unit,
+    TemplateChangeHistory
+    };
 
 class LabController extends Controller
 {
+    private function labContext(): array
+    {
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        return [
+            'lab_id'     => $labUser?->lab_id,
+            'owner_type' => $labUser ? 'lab' : 'super_admin',
+            'owner_id'   => $labUser?->lab_id,
+        ];
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -36,8 +55,7 @@ class LabController extends Controller
     {
         $authUser = auth()->user();
 
-        $labIds = \App\Models\LabUser::where('user_id', $authUser->id)
-                    ->pluck('lab_id');
+        $labIds = LabUser::where('user_id', $authUser->id)->pluck('lab_id');
 
         $query = Lab::with([
             'contacts',
@@ -64,10 +82,10 @@ class LabController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(Request $request, NavigationAccessService $service)
     {
         DB::beginTransaction();
-
+        
         try {
             // 1. Create Lab
             $lab = Lab::create([
@@ -78,6 +96,14 @@ class LabController extends Controller
                 'loaction_count' => $request->loaction_count,
                 'user_count' => $request->user_count
             ]);
+            $modules = $service->getAccessModules(true, false);
+            foreach ($modules as $module) {
+                foreach ($module['accessor'] as $perm) {
+                    Permission::firstOrCreate([
+                        'name' => $module['key'] . '.' . $perm['value'],
+                    ]);
+                }
+            }
 
             // 2. Lab Contacts
             foreach ($request->emails ?? [] as $email) {
@@ -100,6 +126,7 @@ class LabController extends Controller
 
             $masterRoles = Role::where('lab_id', 0)->get();
             foreach ($masterRoles as $masterRole) {
+                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
                     $labRole = Role::Create(
                         [
                             'name'       => $masterRole->name,
@@ -108,11 +135,21 @@ class LabController extends Controller
                             'description' => $masterRole->description,
                         ]
                     );
-                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
-                    $labRole->syncPermissions(
-                        $masterRole->permissions->pluck('name')->toArray()
-                    );
-            }
+                    $moduleMap = [];
+                    foreach ($modules as $module) {
+                        $moduleMap[$module['key']] = $module['key'];
+                    }
+
+                    $permissions = [];
+                    foreach ($modules as $moduleId => $module) {
+                        foreach ($module['accessor'] as $action) {
+                            $permissions[] = $module['key'] . '.' . $action['value'];
+                        }
+                    }
+                    $labRole->syncPermissions($permissions);
+
+                    app(PermissionRegistrar::class)->forgetCachedPermissions();
+                }
 
             $primaryEmail = collect($request->emails ?? [])->firstWhere('is_primary', true);
             $primaryPhone = collect($request->phones ?? [])->firstWhere('is_primary', true);
@@ -206,12 +243,39 @@ class LabController extends Controller
                         'user_id' => $admin->id,
                     ]);
 
+                    $department = Department::SuperAdmin()->get();
+                    foreach ($department as $dept) {
+                        Department::create([
+                            'parent_id'  => $dept->id,
+                            'name'       => $dept->name,
+                            'identifier' => $dept->identifier,
+                            'owner_type' => 'lab',
+                            'owner_id'   => $lab->id,
+                        ]);
+                    }
+
+                    $units = Unit::SuperAdmin()->get();
+                    foreach ($units as $unit) {
+                        Unit::create([
+                            'parent_id'  => $unit->id,
+                            'name'       => $unit->name,
+                            'owner_type' => 'lab',
+                            'owner_id'   => $lab->id,
+                        ]);
+                    }
+
                     $departmentId = $loc['departments'][0]['name'] ?? null;
                     if ($departmentId) {
+                        $departmentOg = Department::where([
+                            ['parent_id', '=', $departmentId],
+                            ['owner_type', '=', 'lab'],
+                            ['owner_id', '=', $lab->id],
+                        ])->first();
+                        
                         $this->assignULDR(
                             $admin->id,
                             $loc['location_name'],
-                            $departmentId,
+                            $departmentOg->id,
                             Role::where([
                                 'level' => 2,
                                 'lab_id' => $lab->id
@@ -221,9 +285,14 @@ class LabController extends Controller
                 }
                 // Departments
                 foreach ($loc['departments'] ?? [] as $dept) {
+                     $departmentOg = Department::where([
+                            ['parent_id', '=', $dept['name']],
+                            ['owner_type', '=', 'lab'],
+                            ['owner_id', '=', $lab->id],
+                        ])->first();
                     LabLocationDepartment::create([
                         'lab_location_id' => $labLocation->id,
-                        'department_id' => $dept['name'] ?? null,
+                        'department_id' => $departmentOg->id ?? null,
                     ]);
                 }
             }
@@ -264,13 +333,12 @@ class LabController extends Controller
         if (!empty($request->documents)) {
                 foreach ($request->documents as $documentId) {
                     $originalDocument = Document::with([
-                        'versions.templates',
-                        'versions.workflowLogs',
+                        'currentVersion.templates.template.currentVersion',
                         'departments'
                     ])->find($documentId);
 
                     if ($originalDocument) {
-                        $this->cloneDocumentForLab($originalDocument, $lab);
+                        $this->cloneDocumentForLab($originalDocument, $lab, $user);
                     }
                 }
             }
@@ -285,43 +353,50 @@ class LabController extends Controller
     }
 
 
-    protected function cloneDocumentForLab(Document $original, Lab $lab)
+    protected function cloneDocumentForLab(Document $original, Lab $lab, $user)
     {
-        return DB::transaction(function () use ($original, $lab) {
+        return DB::transaction(function () use ($original, $lab ,$user ) {
 
             $masterCategory = $original->category;
 
-            $category = Category::firstOrCreate(
-                [
-                    'parent_id'  => $masterCategory->id,
-                    'owner_type' => 'lab',
-                    'owner_id'   => $lab->id,
-                ],
-                [
-                    'name'       => $masterCategory->name,
-                    'identifier' => $masterCategory->identifier,
-                ]
-            );
+            $category = Category::where([
+                'name'     => $masterCategory->name,
+                'owner_id' => $lab->id,
+            ])->first();
 
-            $subCategoryMap = []; // master_sub_id => lab_sub_id
+            if (! $category) {
+                $category = $masterCategory->replicate([
+                    'id', 'created_at', 'updated_at', 'owner_id', 'owner_type'
+                ]);
+
+                $category->parent_id  = $masterCategory->id;
+                $category->owner_type = 'lab';
+                $category->owner_id   = $lab->id;
+
+                $category->save();
+            }
 
             foreach ($masterCategory->subCategories as $masterSub) {
+                $labSub = SubCategory::where([
+                    'identifier' => $masterSub->identifier,
+                    'cat_id'     => $category->id,
+                    'owner_id'   => $lab->id,
+                ])->first();
 
-                $labSub = SubCategory::firstOrCreate(
-                    [
-                        'parent_id'  => $masterSub->id,
-                        'cat_id'     => $category->id, // 🔑 lab category
-                        'owner_type' => 'lab',
-                        'owner_id'   => $lab->id,
-                    ],
-                    [
-                        'name'       => $masterSub->name,
-                        'identifier' => $masterSub->identifier,
-                    ]
-                );
+                if (! $labSub) {
+                    $labSub = $masterSub->replicate([
+                        'id', 'created_at', 'updated_at', 'cat_id'
+                    ]);
 
-                $subCategoryMap[$masterSub->id] = $labSub->id;
+                    $labSub->parent_id  = $masterSub->id;
+                    $labSub->cat_id     = $category->id;
+                    $labSub->owner_type = 'lab';
+                    $labSub->owner_id   = $lab->id;
+
+                    $labSub->save();
+                }
             }
+
 
             $baseNumber = preg_replace('/-\d+$/', '', $original->number); // remove trailing -number
             $suffix = 1;
@@ -336,50 +411,90 @@ class LabController extends Controller
             $newDocument->owner_type  = 'lab';
             $newDocument->owner_id    = $lab->id;
             $newDocument->number      = "{$baseNumber}-{$suffix}";
+            $newDocument->parent_id    = $original->id;
             $newDocument->save();
 
         // 2. Clone departments
             foreach ($original->departments as $dept) {
+                 $departmentOg = Department::where([
+                            ['parent_id', '=', $dept->id],
+                            ['owner_type', '=', 'lab'],
+                            ['owner_id', '=', $lab->id],
+                        ])->first();
                 DocumentDepartment::create([
                     'document_id'   => $newDocument->id,
-                    'department_id' => $dept->id,
+                    'department_id' => $departmentOg->id,
                 ]);
             }
 
         // 3. Clone versions (all fields)
-            foreach ($original->versions as $version) {
-                $newVersion = $version->replicate();
-                $newVersion->document_id = $newDocument->id;
-                $newVersion->is_current = true;
-                $newVersion->save();
-
-            // templates
+            $version = $original->currentVersion;
+            $newVersion = $version->replicate();
+            $newVersion->document_id = $newDocument->id;
+            $newVersion->major_version = 1;
+            $newVersion->minor_version = 0;
+            $newVersion->full_version = '1.0';
+            $newVersion->version_status = 'active';
+            $newVersion->workflow_state = $newDocument->mode == 'create' ? 'prepared' : 'issued';
+            $newVersion->save();
+            
+            if($newDocument->mode == 'create'){
+                // templates
                 foreach ($version->templates as $template) {
+                    $originalTemplate =  $template->template;
+
+                    $newTemplate = $originalTemplate->replicate();
+                    $newTemplate->parent_id = $originalTemplate->id;
+                    $newTemplate->owner_type = 'lab';
+                    $newTemplate->owner_id = $lab->id;
+                    $newTemplate->save();
+
+                    $originalTemplateVersion =  $template->template->currentVersion;
+
+                    $newTemplateVersion = $originalTemplateVersion->replicate();
+
+                    $newTemplateVersion->template_id = $newTemplate->id;
+                    $newTemplateVersion->major =1;
+                    $newTemplateVersion->minor = 0;
+                    $newTemplateVersion->change_type = 'major';
+                    $newTemplateVersion->message = 'Initial version';
+                    $newTemplateVersion->changed_by = $user->id;
+                    $newTemplateVersion->save();
+
+
+                    TemplateChangeHistory::create([
+                        'template_id'=>$newTemplate->id,
+                        'template_version_id'=>$newTemplateVersion->id,
+                        'field_name'=>null,
+                        'old_value'=>null,
+                        'new_value'=>json_encode([
+                            'name'=>$newTemplate->name,
+                            'type'=>$newTemplate->type,
+                            'css'=>$newTemplateVersion->css,
+                            'html'=>$newTemplateVersion->html,
+                            'json'=>$newTemplateVersion->json_data
+                        ]),
+                        'change_context'=>'create',
+                        'changed_by'=> $user->id,
+                        'message'=> 'Template created'
+                    ]);
+
                     DocumentVersionTemplate::create([
                         'document_version_id' => $newVersion->id,
-                        'template_id'         => $template->template_id,
-                        'template_version_id' => $template->template_version_id,
-                        'type'                => $template->type,
+                        'template_id'         => $newTemplate->id,
+                        'template_version_id' => $newTemplateVersion->id,
+                        'type'                => $newTemplate->type,
                     ]);
                 }
 
-            // workflow logs
-                foreach ($version->workflowLogs as $log) {
-                    DocumentVersionWorkflowLog::create([
-                        'document_version_id' => $newVersion->id,
-                        'step_type'           => $log->step_type,
-                        'step_status'         => $log->step_status,
-                        'performed_by'        => $log->performed_by,
-                        'comments'            => $log->comments,
-                        'created_at'          => $log->created_at,
-                        'updated_at'          => $log->updated_at,
-                    ]);
-                }
-
-                LabDocuments::create([
-                    'user_id'             => auth()->id(),
-                    'lab_id'              => $lab->id,
+                // workflow logs
+                DocumentVersionWorkflowLog::create([
                     'document_version_id' => $newVersion->id,
+                    'step_type' => 'prepared',
+                    'step_status' => 'pending',
+                    'performed_by' =>$user->id,
+                    'comments' => 'Initial preparation',
+                    'created_at' => now(),
                 ]);
             }
 
@@ -396,12 +511,14 @@ class LabController extends Controller
             $lab = Lab::with([
                 'contacts',
                 'location.contacts',
-                'location.departments',
+                'location.departments.department',
                 'location.locationRecord',
                 'location.locationRecord.cluster',
                 'labClauseDocuments',
                 'users',
             ])->findOrFail($id);
+            $ctx = $this->labContext();
+
 
             $labAdmin = $lab->users->map(fn($user) => [
                 'id' => $user->id,
@@ -423,31 +540,37 @@ class LabController extends Controller
                 // Lab Emails
                 'emails' => $lab->contacts
                     ->where('type', 'email')
-                    ->map(fn ($c) => [
+                    ->map(function ($c) use ($labAdmin) {
+                        $admin = $labAdmin->firstWhere('email', $c->value);
+                        return [
                         'id'         => $c->id,
+                        'user_id' => $admin['id'] ?? null,
                         'type'       => 'email',
                         'value'      => $c->value,
                         'label'      => $c->label,
                         'is_primary' => (bool) $c->is_primary,
-                    ])
+                        ];
+                    })
                     ->values(),
 
                 // Lab Phones
                 'phones' => $lab->contacts
                     ->where('type', 'phone')
-                    ->map(fn ($c) => [
+                    ->map(function ($c) use ($labAdmin) {
+                        $admin = $labAdmin->firstWhere('phone', $c->value);
+                        return [
                         'id'         => $c->id,
+                        'user_id' => $admin['id'] ?? null,
                         'type'       => 'phone',
                         'value'      => $c->value,
                         'label'      => $c->label,
                         'is_primary' => (bool) $c->is_primary,
-                    ])
+                        ];
+                    })
                     ->values(),
 
-                'users' => $labAdmin,
-                
                  // location
-                'location' => $lab->location->map(function ($location) {
+                'location' => $lab->location->map(function ($location) use ($labAdmin, $ctx) {
                     $primaryEmail = $location->contacts->where('type', 'email')->firstWhere('is_primary', true);
                     $primaryPhone = $location->contacts->where('type', 'phone')->firstWhere('is_primary', true);
 
@@ -465,25 +588,33 @@ class LabController extends Controller
                         // Location Emails
                         'emails' => $location->contacts
                             ->where('type', 'email')
-                            ->map(fn ($c) => [
-                                'id'         => $c->id,
-                                'type'       => 'email',
-                                'value'      => $c->value,
-                                'label'      => $c->label,
-                                'is_primary' => (bool) $c->is_primary,
-                            ])
+                            ->map(function ($c) use ($labAdmin) {
+                                $admin = $labAdmin->firstWhere('email', $c->value);
+                                return [
+                                    'id'         => $c->id,
+                                    'type'       => 'email',
+                                    'value'      => $c->value,
+                                    'label'      => $c->label,
+                                    'is_primary' => (bool) $c->is_primary,
+                                    'user_id' => $admin['id'] ?? null
+                                ];
+                            })
                             ->values(),
 
                         // Location Phones
                         'phones' => $location->contacts
                             ->where('type', 'phone')
-                            ->map(fn ($c) => [
-                                'id'         => $c->id,
-                                'type'       => 'phone',
-                                'value'      => $c->value,
-                                'label'      => $c->label,
-                                'is_primary' => (bool) $c->is_primary,
-                            ])
+                            ->map(function ($c) use ($labAdmin) {
+                                $admin = $labAdmin->firstWhere('phone', $c->value);
+                                return [
+                                    'id'         => $c->id,
+                                    'type'       => 'phone',
+                                    'value'      => $c->value,
+                                    'label'      => $c->label,
+                                    'is_primary' => (bool) $c->is_primary,
+                                    'user_id' => $admin['id'] ?? null
+                                ];
+                            })
                             ->values(),
 
                     // Instruments
@@ -494,7 +625,7 @@ class LabController extends Controller
                         // Departments
                         'departments' => $location->departments->map(fn ($dept) => [
                             'id'   => $dept->id,
-                            'name' => $dept->department_id,
+                            'name' => $ctx['owner_type'] !== 'lab' ? $dept->department->parent_id :$dept->department_id,
                         // 'instruments' => $dept->instruments
                         //     ->pluck('id')
                         //     ->values(),
@@ -538,6 +669,8 @@ class LabController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        dd($request);
+        exit;
         DB::beginTransaction();
 
         try {
@@ -740,4 +873,48 @@ class LabController extends Controller
         return $uldr;
     }
 
+    public function labAssignments()
+    {
+        $currentUser = auth()->user();
+        $labUser = LabUser::where('user_id', $currentUser->id)->first();
+        $query = User::where('is_super_admin', '!=', true);
+        if (!$labUser) {
+            $query->whereNotIn('id', function ($q) {
+                $q->select('user_id')
+                ->from('lab_users');
+            });
+        }
+
+        $labs = Lab::with('location.locationRecord')->get()->map(function ($lab) {
+                app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
+                $lab->roles = Role::query()
+                ->where('lab_id', $lab->id)
+                    ->orderBy('level')
+                    ->get();
+
+                return $lab;
+            });
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+                'lab_count'          => Lab::count(),
+                'lab_location_count' => LabLocation::count(),
+                'user_count' => $query->count(),
+                'users' => $query->get(),
+                'labs' => $labs
+            ],
+        ], 200);
+    }
+
+    public function assignmentUserRole(Request $request)
+    {
+        dd($request);
+
+        return response()->json([
+            'success' => true,
+            'data'    => [
+            ],
+        ], 200);
+    }
 }

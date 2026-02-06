@@ -7,15 +7,10 @@ use Spatie\Permission\PermissionRegistrar;
 
 class NavigationAccessService
 {
-    public function getAccessModules($user, $isGroup = true): array
+    public function getAccessModules($isMaster, $isGroup = true): array
     {
-        app(PermissionRegistrar::class)->setPermissionsTeamId(0);
-        $labIds = $user->roles->pluck('lab_id');
-        $isMaster = $labIds->filter()->isEmpty();
-
-        $items = NavigationItem::with(
-            $isMaster ? 'childrenForMaster' : 'children'
-        )
+        request()->attributes->set('isLabUser', $isMaster);
+        $items = NavigationItem::with('children')
         ->whereNull('parent_id')
         ->orderBy('order')
         ->get();
@@ -26,7 +21,7 @@ class NavigationAccessService
     protected function mapToAccessModules($items, bool $isMaster, bool $isGroup): array
     {
         $modules = [];
-        $relation = $isMaster ? 'childrenForMaster' : 'children';
+        $relation = 'children';
         if ($isGroup) {
             foreach ($items as $item) {
                 foreach ($item->{$relation} ?? [] as $child) {

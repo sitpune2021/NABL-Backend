@@ -13,8 +13,9 @@ return new class extends Migration
     {
         Schema::create('documents', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('parent_id')->nullable()->constrained('documents')->nullOnDelete()->comment('master documents id if this is a lab override');
             $table->string('name');
-            $table->string('number')->nullable()->unique(); // code+dept+seq
+            $table->string('number')->nullable(); // code+dept+seq this must be unique
             $table->foreignId('category_id')->constrained(); // reference to categories
             $table->enum('status', ['controlled', 'uncontrolled'])->default('controlled');
             $table->enum('mode', ['create', 'upload'])->default('create');

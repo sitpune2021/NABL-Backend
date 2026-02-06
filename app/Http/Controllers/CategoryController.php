@@ -3,13 +3,14 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Category;
-use App\Models\LabUser;
+
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Validation\Rule;
+
+use App\Models\{Category, LabUser};
 
 class CategoryController extends Controller
 {
@@ -63,7 +64,6 @@ class CategoryController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-
 
             return response()->json([
                 'success' => true,
@@ -160,6 +160,7 @@ class CategoryController extends Controller
             $ctx = $this->labContext();
 
             $category = Category::accessible($ctx['lab_id'])->findOrFail($id);
+            
             return response()->json([
                 'success' => true,
                 'data' => $category

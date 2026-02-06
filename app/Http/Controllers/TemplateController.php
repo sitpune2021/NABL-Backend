@@ -3,25 +3,44 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Template;
-use App\Models\TemplateVersion;
-use App\Models\TemplateChangeHistory;
+
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
-use App\Models\DocumentVersionTemplate;
-use App\Models\DocumentVersion;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+
+use App\Models\{Template, TemplateVersion, TemplateChangeHistory, LabUser, DocumentVersionTemplate, DocumentVersion};
 
 class TemplateController extends Controller
 {
+    private function labContext(): array
+    {
+        $user = auth()->user();
+        $labUser = LabUser::where('user_id', $user->id)->first();
+
+        return [
+            'lab_id'     => $labUser?->lab_id,
+            'owner_type' => $labUser ? 'lab' : 'super_admin',
+            'owner_id'   => $labUser?->lab_id,
+        ];
+    }
+
     /**
      * List templates with current version info
      */
     public function index(Request $request)
     {
         try {
-            $query = Template::with('currentVersion')->withTrashed();
+            $ctx = $this->labContext();
+            $query = Template::with('currentVersion');
+            
+            if ($ctx['lab_id'] == null) {
+                $query->SuperAdmin();
+            } else {
+                $query->ForLab($ctx['lab_id']);
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -87,8 +106,26 @@ class TemplateController extends Controller
      */
     public function store(Request $request)
     {
+        $ctx = $this->labContext();
+
         $validator = Validator::make($request->all(), [
-            'name'=>'required|string|max:255|unique:templates,name',
+            'name'=>'required',
+            'parent_id' => [
+                'nullable',
+                'exists:templates,id',
+                fn ($attr, $value, $fail) =>
+                    $value && $ctx['owner_type'] !== 'lab'
+                        ? $fail('Only lab users can override master departments')
+                        : null
+            ],
+            'name' => [
+                'required',
+                Rule::unique('templates')->where(fn ($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                      ->where('owner_id', $ctx['owner_id'])
+                      ->whereNull('deleted_at')
+                ),
+            ],
             'type'=>'required|in:header,footer',
             'template.css'=>'nullable|string',
             'template.html'=>'nullable|string',
@@ -105,9 +142,12 @@ class TemplateController extends Controller
             $userId = Auth::user()->id;
 
             $template = Template::create([
+                'parent_id'  => $request->parent_id,
                 'name'=>$data['name'],
                 'type'=>$data['type'],
                 'status'=>$data['status'],
+                'owner_type' => $ctx['owner_type'],
+                'owner_id'   => $ctx['owner_id'],
             ]);
 
             $version = TemplateVersion::create([
@@ -155,7 +195,9 @@ class TemplateController extends Controller
     public function show($id)
     {
         try {
-            $template = Template::with('currentVersion')->findOrFail($id);
+            $ctx = $this->labContext();
+            
+            $template = Template::with('currentVersion')->accessible($ctx['lab_id'])->findOrFail($id);
             $currentVersion = $template->currentVersion;
 
             $formatted = [
@@ -211,8 +253,17 @@ class TemplateController extends Controller
      */
     public function update(Request $request, $id)
     {
+        $template = Template::findOrFail($id);
+
         $validator = Validator::make($request->all(), [
-            'name'=>'sometimes|required|string|max:255|unique:templates,name,'.$id,
+            'name' => [
+                'sometimes',
+                Rule::unique('templates')->ignore($id)->where(fn ($q) =>
+                    $q->where('owner_type', $department->owner_type)
+                      ->where('owner_id', $department->owner_id)
+                      ->whereNull('deleted_at')
+                ),
+            ],
             'type'=>'sometimes|required|in:header,footer',
             'template.css'=>'nullable|string',
             'template.html'=>'nullable|string',
@@ -222,14 +273,12 @@ class TemplateController extends Controller
             'apply_all_documents'=>'sometimes|boolean',
         ]);
 
-        if ($validator->fails()) {return response()->json(['success'=>false,'errors'=>$validator->errors()],422);
-        }
+        if ($validator->fails()) return response()->json(['success'=>false,'errors'=>$validator->errors()],422);
 
         DB::beginTransaction();
         try {
-            $template = Template::findOrFail($id);
             $data = $validator->validated();
-            $userId = Auth::id();
+            $userId = Auth::user()->id;
             $applyAll = $request->boolean('apply_all_documents');
 
             $template->update([
@@ -305,6 +354,13 @@ class TemplateController extends Controller
         DB::beginTransaction();
         try {
             $template = Template::findOrFail($id);
+             if ($template->is_master) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Master template cannot be deleted',
+                ], 403);
+            }
+
             $template->delete();
             DB::commit();
             return response()->json(['success'=>true,'message'=>'Template soft deleted'],200);
@@ -337,7 +393,7 @@ class TemplateController extends Controller
     public function versions(Request $request, $templateId)
     {
         try {
-            $template = Template::withTrashed()->findOrFail($templateId);
+            $template = Template::findOrFail($templateId);
 
             $query = $template->versions()->with('template');
 
