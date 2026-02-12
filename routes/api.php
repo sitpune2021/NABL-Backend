@@ -41,6 +41,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::get('/categories/lab-master', [CategoryController::class, 'labMasterCategories']);
     Route::post('categories/append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
     Route::apiResource('categories', CategoryController::class);
+    Route::get('sub-categories/lab-master', [SubCategoryController::class, 'labMasterSubCategories']);
+    Route::post('sub-categories/append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
     Route::apiResource('sub-categories', SubCategoryController::class);
     Route::apiResource('departments', DepartmentController::class);
     Route::apiResource('units', UnitController::class);
