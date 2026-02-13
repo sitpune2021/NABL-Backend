@@ -57,5 +57,6 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::get('standards-current', [StandardController::class, 'currentStandards']);
     Route::apiResource('clauses', ClauseDocumentLinkController::class);
     Route::get('profile/me', [AuthProfileController::class, 'show']);
+    Route::get('profile', [AuthProfileController::class,'profile']);
     Route::put('profile/update', [AuthProfileController::class, 'update']);
 });

@@ -10,6 +10,7 @@ use Spatie\Permission\Traits\HasRoles;
 use App\Models\UserLocationDepartmentRole;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -61,6 +62,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(UserLocationDepartmentRole::class);
     }
 
+    public function userAssignments()
+    {
+        return $this->hasMany(UserAssignment::class);
+    }
+
      public function uldr()
     {
         return $this->hasMany(UserLocationDepartmentRole::class);
@@ -98,9 +104,37 @@ class User extends Authenticatable implements JWTSubject
     }
 
     public function labs()
-{
-    return $this->belongsToMany(Lab::class, 'lab_users');
-}
+    {
+        return $this->belongsToMany(Lab::class, 'lab_users');
+    }
+
+    public function labUser()
+    {
+        return $this->hasOne(LabUser::class, 'user_id')
+                    ->with('lab');
+    }
+
+    public function userAssignmentsWithRelations()
+    {
+        return $this->hasMany(UserAssignment::class)->with(['lab']);
+    }
+
+    public function rolesWithLab()
+    {
+        return $this->belongsToMany(Role::class, 'model_has_roles', 'model_id', 'role_id')
+            ->withPivot('lab_id')
+            ->wherePivot('model_type', self::class)
+            ->leftJoin('labs', 'labs.id', '=', 'model_has_roles.lab_id')
+            ->select(
+                'roles.*',
+                'model_has_roles.lab_id',
+                'labs.name as lab_name'
+            );
+    }
+
+
 
     
 }
+
+

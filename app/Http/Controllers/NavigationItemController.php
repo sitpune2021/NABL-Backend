@@ -30,7 +30,6 @@ class NavigationItemController extends Controller
             ->orderBy('order')
             ->get();
 
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         $role = $user->roles()->first(); // or by role name
         $permissions =  $role->permissions->pluck('name')
             ->filter(function ($perm) {
@@ -217,11 +216,8 @@ class NavigationItemController extends Controller
 
     public function accessModules(NavigationAccessService $service)
     {
-        $user = Auth::user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-        $lab =  $labUser ? $labUser->lab_id  : 0;
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
-        $isMaster =  $labUser ? true : false;
+        $ctx = $this->labContext(request());
+        $isMaster =  $ctx['lab_id'] == 0  ? true : false;
         return response()->json(
             $service->getAccessModules($isMaster),
             200,

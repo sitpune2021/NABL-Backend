@@ -31,22 +31,12 @@ use App\Models\{Lab,
     SubCategory,
     Department, 
     Unit,
-    TemplateChangeHistory
+    TemplateChangeHistory,
+    UserAssignment
     };
 
 class LabController extends Controller
 {
-    private function labContext(): array
-    {
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-
-        return [
-            'lab_id'     => $labUser?->lab_id,
-            'owner_type' => $labUser ? 'lab' : 'super_admin',
-            'owner_id'   => $labUser?->lab_id,
-        ];
-    }
 
     /**
      * Display a listing of the resource.
@@ -505,7 +495,7 @@ class LabController extends Controller
     /**
      * Display the specified lab.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
         try {
             $lab = Lab::with([
@@ -517,7 +507,7 @@ class LabController extends Controller
                 'labClauseDocuments',
                 'users',
             ])->findOrFail($id);
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
 
 
             $labAdmin = $lab->users->map(fn($user) => [
@@ -875,46 +865,201 @@ class LabController extends Controller
 
     public function labAssignments()
     {
+        /* ===============================
+        USER FILTERING
+        =============================== */
+
         $currentUser = auth()->user();
         $labUser = LabUser::where('user_id', $currentUser->id)->first();
-        $query = User::where('is_super_admin', '!=', true);
+
+        $userQuery = User::where('is_super_admin', false);
+
         if (!$labUser) {
-            $query->whereNotIn('id', function ($q) {
-                $q->select('user_id')
-                ->from('lab_users');
+            $userQuery->whereNotIn('id', function ($q) {
+                $q->select('user_id')->from('lab_users');
             });
         }
 
-        $labs = Lab::with('location.locationRecord')->get()->map(function ($lab) {
-                app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
-                $lab->roles = Role::query()
-                ->where('lab_id', $lab->id)
-                    ->orderBy('level')
-                    ->get();
+        $users     = $userQuery->get();
+        $userIds  = $users->pluck('id');
+        $totalUsers = $users->count();
 
-                return $lab;
-            });
+        /* ===============================
+        BASE TOTALS
+        =============================== */
+
+        $totalLabs      = Lab::count();
+        $totalLocations = LabLocation::count();
+
+        /* ===============================
+        LOAD DATA
+        =============================== */
+
+        $labs = Lab::with('location.locationRecord')->get()->map(function ($lab) {
+            app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
+
+            $lab->roles = Role::where('lab_id', $lab->id)
+                ->orderBy('level')
+                ->get();
+
+            return $lab;
+        });
+
+        $assignments = UserAssignment::select(
+                'user_id',
+                'lab_id',
+                'location_id'
+            )->get();
+
+        $assingn= UserAssignment::get();
+
+        /* ===============================
+        LOCATION ASSIGNMENT
+        =============================== */
+
+        $assignedLocations = $assignments
+            ->whereNotNull('location_id')
+            ->pluck('location_id')
+            ->unique()
+            ->count();
+
+        $pendingLocations = $totalLocations - $assignedLocations;
+
+        /* ===============================
+        USER ASSIGNMENT
+        =============================== */
+
+        $assignedUsers = $assignments
+            ->pluck('user_id')
+            ->unique()
+            ->count();
+
+        $pendingUsers = $totalUsers - $assignedUsers;
+
+        /* ===============================
+        LAB ASSIGNMENT (IMPORTANT PART)
+        =============================== */
+
+        $assignedLabs = 0;
+        $pendingLabs  = 0;
+
+        foreach ($labs as $lab) {
+
+            $totalLabLocations = $lab->location->count();
+
+            // If a lab has no locations → pending
+            if ($totalLabLocations === 0) {
+                $pendingLabs++;
+                continue;
+            }
+
+            // Locations that have at least one assignment
+            $assignedLabLocations = $assignments
+                ->where('lab_id', $lab->id)
+                ->whereNotNull('location_id')
+                ->pluck('location_id')
+                ->unique()
+                ->count();
+
+            if ($assignedLabLocations === $totalLabLocations) {
+                $assignedLabs++;
+            } else {
+                $pendingLabs++;
+            }
+        }
+
+        /* ===============================
+        RESPONSE
+        =============================== */
 
         return response()->json([
             'success' => true,
-            'data'    => [
-                'lab_count'          => Lab::count(),
-                'lab_location_count' => LabLocation::count(),
-                'user_count' => $query->count(),
-                'users' => $query->get(),
-                'labs' => $labs
+            'data' => [
+                'lab_count'          => $totalLabs,
+                'lab_location_count' => $totalLocations,
+                'user_count'         => $totalUsers,
+
+                'users'   => $users,
+                'labs'    => $labs,
+                'assingn' => $assignments,
+                'assingn' => $assingn,
+
+
+                'lab_assignment' => [
+                    'assigned' => $assignedLabs,
+                    'pending'  => $pendingLabs,
+                ],
+
+                'location_assignment' => [
+                    'assigned' => $assignedLocations,
+                    'pending'  => $pendingLocations,
+                ],
+
+                'user_assignment' => [
+                    'assigned' => $assignedUsers,
+                    'pending'  => $pendingUsers,
+                ],
             ],
         ], 200);
     }
 
     public function assignmentUserRole(Request $request)
     {
-        dd($request);
+        $validated = $request->validate([
+            'user_id'     => ['required', 'exists:users,id'],
+            'lab_id'      => ['required', 'exists:labs,id'],
+            'location_id' => ['nullable', 'exists:locations,id'],
+            'role_id'     => ['required', 'exists:roles,id'],
+            'action'      => ['required', 'in:assign,remove'],
+        ]);
 
-        return response()->json([
-            'success' => true,
-            'data'    => [
-            ],
-        ], 200);
+        return DB::transaction(function () use ($validated) {
+
+            $user = User::findOrFail($validated['user_id']);
+
+            app(PermissionRegistrar::class)
+                ->setPermissionsTeamId($validated['lab_id']);
+
+            $role = Role::where('lab_id', $validated['lab_id'])
+                ->findOrFail($validated['role_id']);
+                if($validated['action'] === 'assign') {
+
+                    $user->syncRoles([$role]);
+                    $user->syncPermissions(
+                        $role->permissions->pluck('name')->toArray()
+                    );
+
+                    UserAssignment::updateOrCreate(
+                        [
+                            'user_id'     => $user->id,
+                            'lab_id'      => $validated['lab_id'],
+                            'location_id' => $validated['location_id'],
+                            'role_id'     => $role->id,
+                        ],
+                        [] // no extra fields yet
+                    );
+                }
+                else{
+                    $user->removeRole($role);
+                    $user->syncPermissions(
+                        $user->getRoleNames()->flatMap(function($r) use ($validated) {
+                            return Role::where('lab_id', $validated['lab_id'])->findByName($r)->permissions->pluck('name')->toArray();
+                        })->unique()->toArray()
+                    );
+
+                    UserAssignment::where([
+                        'user_id'     => $user->id,
+                        'lab_id'      => $validated['lab_id'],
+                        'location_id' => $validated['location_id'],
+                        'role_id'     => $role->id,
+                    ])->delete();
+                }
+
+            return response()->json([
+                'success' => true,
+                'message' => "User role {$validated['action']} successfully",
+            ], 200);
+
+        });
     }
 }
