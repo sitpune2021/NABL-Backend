@@ -14,7 +14,8 @@ class Department extends Model
         'name',
         'identifier',
         'owner_type',
-        'owner_id'
+        'owner_id',
+        'appended_from_lab_id',
     ];
 
     protected $casts = [

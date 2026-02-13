@@ -83,25 +83,27 @@ class DepartmentController extends Controller
             'parent_id' => [
                 'nullable',
                 'exists:departments,id',
-                fn ($attr, $value, $fail) =>
-                    $value && $ctx['owner_type'] !== 'lab'
-                        ? $fail('Only lab users can override master departments')
-                        : null
+                fn($attr, $value, $fail) =>
+                $value && $ctx['owner_type'] !== 'lab'
+                    ? $fail('Only lab users can override master departments')
+                    : null
             ],
             'name' => [
                 'required',
-                Rule::unique('departments')->where(fn ($q) =>
+                Rule::unique('departments')->where(
+                    fn($q) =>
                     $q->where('owner_type', $ctx['owner_type'])
-                      ->where('owner_id', $ctx['owner_id'])
-                      ->whereNull('deleted_at')
+                        ->where('owner_id', $ctx['owner_id'])
+                        ->whereNull('deleted_at')
                 ),
             ],
             'identifier' => [
                 'required',
-                Rule::unique('departments')->where(fn ($q) =>
+                Rule::unique('departments')->where(
+                    fn($q) =>
                     $q->where('owner_type', $ctx['owner_type'])
-                      ->where('owner_id', $ctx['owner_id'])
-                      ->whereNull('deleted_at')
+                        ->where('owner_id', $ctx['owner_id'])
+                        ->whereNull('deleted_at')
                 ),
             ],
         ]);
@@ -170,22 +172,24 @@ class DepartmentController extends Controller
     public function update(Request $request, string $id)
     {
         $department = Department::findOrFail($id);
-        
+
         $validator = Validator::make($request->all(), [
             'name' => [
                 'sometimes',
-                Rule::unique('departments')->ignore($id)->where(fn ($q) =>
+                Rule::unique('departments')->ignore($id)->where(
+                    fn($q) =>
                     $q->where('owner_type', $department->owner_type)
-                      ->where('owner_id', $department->owner_id)
-                      ->whereNull('deleted_at')
+                        ->where('owner_id', $department->owner_id)
+                        ->whereNull('deleted_at')
                 ),
             ],
             'identifier' => [
                 'sometimes',
-                Rule::unique('departments')->ignore($id)->where(fn ($q) =>
+                Rule::unique('departments')->ignore($id)->where(
+                    fn($q) =>
                     $q->where('owner_type', $department->owner_type)
-                      ->where('owner_id', $department->owner_id)
-                      ->whereNull('deleted_at')
+                        ->where('owner_id', $department->owner_id)
+                        ->whereNull('deleted_at')
                 ),
             ],
         ]);
@@ -256,6 +260,84 @@ class DepartmentController extends Controller
                 'success' => false,
                 'message' => 'Failed to delete department',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function labMasterDepartments(Request $request)
+    {
+        $labId = $request->query('lab_id');
+
+        if (!$labId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'lab_id is required'
+            ], 422);
+        }
+
+        $departments = Department::where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $departments
+        ]);
+    }
+
+    public function appendLabDepartmentToMaster(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'lab_department_id' => ['required', 'exists:departments,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $labDepartment = Department::where('id', $request->lab_department_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $alreadyExists = Department::where('owner_type', 'super_admin')
+            ->where('parent_id', $labDepartment->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Department already synced',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $masterDepartment = Department::create([
+                'parent_id'              => $labDepartment->id,
+                'name'                   => $labDepartment->name,
+                'identifier'             => $labDepartment->identifier,
+                'owner_type'             => 'super_admin',
+                'owner_id'               => null,
+                'appended_from_lab_id'   => $labDepartment->owner_id,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $masterDepartment,
+            ], 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append department',
             ], 500);
         }
     }

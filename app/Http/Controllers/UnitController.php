@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 use App\Models\{Unit, LabUser};
+use Illuminate\Validation\Rule;
 
 class UnitController extends Controller
 {
@@ -215,7 +216,7 @@ class UnitController extends Controller
         DB::beginTransaction();
         try {
             $unit = Unit::findOrFail($id);
-            if ($department->is_master) {
+            if ($unit->is_master) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Master unit cannot be deleted',
@@ -229,7 +230,7 @@ class UnitController extends Controller
                 'success' => true,
                 'message' => 'Unit deleted successfully'
             ], 200);
-            
+
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -242,6 +243,84 @@ class UnitController extends Controller
                 'success' => false,
                 'message' => 'Failed to delete unit',
                 'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    public function labMasterUnits(Request $request)
+    {
+        $labId = $request->query('lab_id');
+
+        if (!$labId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'lab_id is required'
+            ], 422);
+        }
+
+        $units = Unit::where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $units
+        ]);
+    }
+
+    public function appendLabUnitToMaster(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'lab_unit_id' => ['required', 'exists:units,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $labUnit = Unit::where('id', $request->lab_unit_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $alreadyExists = Unit::where('owner_type', 'super_admin')
+            ->where('parent_id', $labUnit->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unit already synced',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $masterUnit = Unit::create([
+                'parent_id'              => $labUnit->id,
+                'name'                   => $labUnit->name,
+                'identifier'             => $labUnit->identifier,
+                'owner_type'             => 'super_admin',
+                'owner_id'               => null,
+                'appended_from_lab_id'   => $labUnit->owner_id,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $masterUnit,
+            ], 201);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append unit',
             ], 500);
         }
     }
