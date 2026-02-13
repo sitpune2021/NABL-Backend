@@ -106,7 +106,7 @@ class UserSeeder extends Seeder
             ->where('lab_id', 0)
             ->firstOrFail();
 
-        $user->syncRoles([$role]);
+        $user->assignRole($role);
         $permissions = $role->permissions->pluck('name')->toArray();
         $user->syncPermissions($permissions); // <-- THIS populates model_has_permissions
     }

@@ -163,7 +163,7 @@ class LabController extends Controller
                     ->where('lab_id', $lab->id)
                     ->firstOrFail();
 
-                $user->syncRoles([$labSuperAdminRole]);
+                $user->assignRole($labSuperAdminRole);
                 $permissions = $labSuperAdminRole->permissions->pluck('name')->toArray();
                 $user->syncPermissions($permissions);
 
@@ -225,7 +225,7 @@ class LabController extends Controller
                         ->where('lab_id', $lab->id)
                         ->firstOrFail();
 
-                    $admin->syncRoles([$labadminRole]);
+                    $admin->assignRole($labadminRole);
                     $adminpermissions = $labadminRole->permissions->pluck('name')->toArray();
                     $admin->syncPermissions($adminpermissions);
                     LabUser::firstOrCreate([
@@ -1024,7 +1024,7 @@ class LabController extends Controller
                 ->findOrFail($validated['role_id']);
                 if($validated['action'] === 'assign') {
 
-                    $user->syncRoles([$role]);
+                    $user->assignRole($role);
                     $user->syncPermissions(
                         $role->permissions->pluck('name')->toArray()
                     );
