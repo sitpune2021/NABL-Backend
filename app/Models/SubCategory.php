@@ -15,6 +15,7 @@ class SubCategory extends Model
         'identifier',
         'owner_type',
         'owner_id',
+        'appended_from_lab_id',
     ];
 
     protected $casts = [

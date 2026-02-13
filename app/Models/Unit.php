@@ -8,12 +8,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Unit extends Model
 {
     use softDeletes;
-    
+
     protected $fillable = [
         'parent_id',
         'name',
         'owner_type',
         'owner_id',
+        'appended_from_lab_id',
     ];
 
     protected $casts = [
