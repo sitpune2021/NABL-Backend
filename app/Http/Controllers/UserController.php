@@ -165,7 +165,7 @@ class UserController extends Controller
                                 ->where('lab_id', $ctx['lab_id'])
                                 ->firstOrFail();
 
-                $user->syncRoles([$Role]);
+                $user->assignRole($Role);
                 $permissions = $Role->permissions->pluck('name')->toArray();
                 $user->syncPermissions($permissions);
             }
@@ -176,7 +176,7 @@ class UserController extends Controller
                     foreach ($deptBlock['roles'] as $roleItem) {
                         $roleId = $roleItem['value'];
                         $role = Role::find($roleId);
-                        $user->syncRoles([$role]);
+                        $user->assignRole($role);
                         $permissions = $role->permissions->pluck('name')->toArray();
                         $user->syncPermissions($permissions);
 
