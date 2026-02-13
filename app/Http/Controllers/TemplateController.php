@@ -15,17 +15,6 @@ use App\Models\{Template, TemplateVersion, TemplateChangeHistory, LabUser, Docum
 
 class TemplateController extends Controller
 {
-    private function labContext(): array
-    {
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-
-        return [
-            'lab_id'     => $labUser?->lab_id,
-            'owner_type' => $labUser ? 'lab' : 'super_admin',
-            'owner_id'   => $labUser?->lab_id,
-        ];
-    }
 
     /**
      * List templates with current version info
@@ -33,7 +22,7 @@ class TemplateController extends Controller
     public function index(Request $request)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
             $query = Template::with('currentVersion');
             
             if ($ctx['lab_id'] == null) {
@@ -106,7 +95,7 @@ class TemplateController extends Controller
      */
     public function store(Request $request)
     {
-        $ctx = $this->labContext();
+        $ctx = $this->labContext($request);
 
         $validator = Validator::make($request->all(), [
             'name'=>'required',
@@ -195,7 +184,7 @@ class TemplateController extends Controller
     public function show($id)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext(request());
             
             $template = Template::with('currentVersion')->accessible($ctx['lab_id'])->findOrFail($id);
             $currentVersion = $template->currentVersion;
@@ -259,8 +248,8 @@ class TemplateController extends Controller
             'name' => [
                 'sometimes',
                 Rule::unique('templates')->ignore($id)->where(fn ($q) =>
-                    $q->where('owner_type', $department->owner_type)
-                      ->where('owner_id', $department->owner_id)
+                    $q->where('owner_type', $template->owner_type)
+                      ->where('owner_id', $template->owner_id)
                       ->whereNull('deleted_at')
                 ),
             ],

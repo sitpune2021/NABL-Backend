@@ -28,26 +28,13 @@ use App\Models\{
 
 class DocumentController extends Controller
 {
-    private function labContext(): array
-    {
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-
-        return [
-            'lab_id'     => $labUser?->lab_id,
-            'user_id' => $labUser->user_id ?? null,
-            'owner_type' => $labUser ? 'lab' : 'super_admin',
-            'owner_id'   => $labUser?->lab_id,
-        ];
-    }
-
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
             $query = Document::with('currentVersion.workflowLogs','currentVersion.amendments', 'category');
 
             if ($ctx['lab_id'] == null) {
@@ -151,7 +138,7 @@ class DocumentController extends Controller
 
         DB::beginTransaction();
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
 
             $document = Document::create([
                 'name' => $request->name,
@@ -252,14 +239,14 @@ class DocumentController extends Controller
     public function show(string $id)
     {
         try {
-        $document = Document::with([
-                'departments:id',
-            'versions.templates.template.currentVersion',
-            'versions.workflowLogs.user',
-                'currentVersion.templates.template.currentVersion'
-        ])->findOrFail($id);
+            $document = Document::with([
+                    'departments:id',
+                'versions.templates.template.currentVersion',
+                'versions.workflowLogs.user',
+                    'currentVersion.templates.template.currentVersion'
+            ])->findOrFail($id);
 
-                 $version = $document->currentVersion;
+            $version = $document->currentVersion;
 
             $payload = [
                 'mode' => $document->mode,
@@ -321,10 +308,6 @@ class DocumentController extends Controller
                 ];
 
                 $workflowPayload = [];
-                $currentUser = auth()->user();
-                $labUser = LabUser::where('user_id', $currentUser->id)->first();
-                $lab =  $labUser ? $labUser->lab_id  : 0;
-                app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
 
                 foreach ($logs as $log) {
                     if (!isset($map[$log->step_type])) continue;

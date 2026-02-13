@@ -14,17 +14,6 @@ use App\Models\{Category, LabUser};
 
 class CategoryController extends Controller
 {
-    private function labContext(): array
-    {
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-
-        return [
-            'lab_id'     => $labUser?->lab_id,
-            'owner_type' => $labUser ? 'lab' : 'super_admin',
-            'owner_id'   => $labUser?->lab_id,
-        ];
-    }
 
     /**
      * Display a listing of the resource.
@@ -32,7 +21,7 @@ class CategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
             $query = Category::query();
 
             if ($ctx['lab_id'] == null) {
@@ -85,7 +74,7 @@ class CategoryController extends Controller
      */
     public function store(Request $request)
     {
-        $ctx = $this->labContext();
+        $ctx = $this->labContext($request);
 
         $validator = Validator::make($request->all(), [
             'name' => ['required'],
@@ -157,7 +146,7 @@ class CategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext(request());
 
             $category = Category::accessible($ctx['lab_id'])->findOrFail($id);
             

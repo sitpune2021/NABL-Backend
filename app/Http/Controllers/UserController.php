@@ -25,13 +25,9 @@ class UserController extends Controller
     {
         try {
             $currentUser = auth()->user();
-
-            // Check if the logged-in user is a lab user
-            $labUser = LabUser::where('user_id', $currentUser->id)->first();
-            $lab = $labUser ? $labUser->lab_id : 0;
-            app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
             $currentRole = $currentUser->roles->first();
             $currentRoleLevel = $currentRole?->level;
+            $ctx = $this->labContext($request);
 
             $query = User::with([
                 'assignments.location',
@@ -40,12 +36,12 @@ class UserController extends Controller
                 'assignments.customPermissions.permission'
             ])->where('id', '!=', $currentUser->id);
 
-            if ($labUser) {
+            if ($ctx['lab_id'] != 0) {
                 // Filter users by the same lab
-                $query->whereIn('id', function ($q) use ($labUser) {
+                $query->whereIn('id', function ($q) use ($ctx) {
                     $q->select('user_id')
                     ->from('lab_users')
-                    ->where('lab_id', $labUser->lab_id);
+                    ->where('lab_id', $ctx['lab_id']);
                 });
             } else {
                 $query->whereNotIn('id', function ($q) {
@@ -161,13 +157,12 @@ class UserController extends Controller
                 'password'  => Hash::make('password123'), // default
             ]);
 
-            $labUser = LabUser::where('user_id', $authUser->id)->first();
-            $lab =  $labUser ? $labUser->lab_id  : 0;
-            app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
+                        $ctx = $this->labContext($request);
 
-            if(!$labUser){
+
+            if($ctx['lab_id'] == 0) {
                 $Role = Role::where('id', $request->role)
-                                ->where('lab_id', $lab)
+                                ->where('lab_id', $ctx['lab_id'])
                                 ->firstOrFail();
 
                 $user->syncRoles([$Role]);
@@ -244,9 +239,6 @@ class UserController extends Controller
             return response()->json(['message' => 'User not found'], 404);
         }
         
-        $labUser = LabUser::where('user_id', $id)->first();
-        $lab = $labUser ? $labUser->lab_id : 0;
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         $role = $user->roles->first(); // Spatie role
 
         $userRoles = $user->assignments->groupBy(function($assignment) {

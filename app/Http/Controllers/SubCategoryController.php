@@ -14,17 +14,6 @@ use Illuminate\Validation\Rule;
 
 class SubCategoryController extends Controller
 {
-    private function labContext(): array
-    {
-        $user = auth()->user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-
-        return [
-            'lab_id'     => $labUser?->lab_id,
-            'owner_type' => $labUser ? 'lab' : 'super_admin',
-            'owner_id'   => $labUser?->lab_id,
-        ];
-    }
 
     /**
      * Display a listing of the resource.
@@ -32,7 +21,7 @@ class SubCategoryController extends Controller
     public function index(Request $request)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext($request);
 
             $query = SubCategory::with('category');
 
@@ -101,7 +90,7 @@ class SubCategoryController extends Controller
      */
     public function store(Request $request)
     {
-        $ctx = $this->labContext();
+        $ctx = $this->labContext($request);
 
         $validator = Validator::make($request->all(), [
             'cat_id' => ['required', 'exists:categories,id'],
@@ -157,7 +146,7 @@ class SubCategoryController extends Controller
     public function show(string $id)
     {
         try {
-            $ctx = $this->labContext();
+            $ctx = $this->labContext(request());
 
             $subCategory = SubCategory::with('category')
                 ->accessible($ctx['lab_id'])

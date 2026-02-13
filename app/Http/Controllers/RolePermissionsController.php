@@ -19,19 +19,18 @@ class RolePermissionsController extends Controller
      */
     public function index()
     {
-        $currentUser = auth()->user();
-        $labUser = LabUser::where('user_id', $currentUser->id)->first();
-        $lab =  $labUser ? $labUser->lab_id  : 0;
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
-        $minLevel = $currentUser->roles
-            ->where('lab_id', $lab)          // ✅ Current lab roles
+        $user = auth()->user();
+        $ctx = $this->labContext(request());
+        
+        $minLevel = $user->roles
+            ->where('lab_id', $ctx['lab_id'])          // ✅ Current lab roles
             ->min('level');
 
         $roles = Role::query()
             ->with(['users' => function ($q) {
                 $q->select('users.id', 'users.name');
             }])
-            ->where('lab_id', $lab)                // ✅ MASTER ONLY
+            ->where('lab_id', $ctx['lab_id'])                // ✅ MASTER ONLY
             ->where('level', '>', $minLevel)    // ✅ RBAC hierarchy
             ->orderBy('level')
             ->get()
@@ -70,30 +69,25 @@ class RolePermissionsController extends Controller
             'accessRight' => 'required|array',
         ]);
 
-        $currentUser = auth()->user();
-        $labUser = LabUser::where('user_id', $currentUser->id)->first();
-        $lab =  $labUser ? $labUser->lab_id  : 0;
-        $isMaster =  $labUser ? false : true;
+        $isMaster =  $ctx['lab_id'] == 0  ? true : false;
+        $ctx = $this->labContext(request());
 
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $targetLevel = $request->level;
-        $maxLevel = Role::where('lab_id', $lab)->max('level') ?? 0;
+        $maxLevel = Role::where('lab_id', $ctx['lab_id'])->max('level') ?? 0;
         if ($targetLevel > $maxLevel) {
             $insertLevel = $maxLevel + 1;
         } else {
-            Role::where('lab_id', $lab)->where('level', '>=', $targetLevel)->increment('level');
+            Role::where('lab_id', $ctx['lab_id'])->where('level', '>=', $targetLevel)->increment('level');
             $insertLevel = $targetLevel;
         }
-
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
 
         $role = Role::create([
             'name' => $request->name,
             'description' => $request->description ?? null,
             'level' => $insertLevel,
-            'lab_id' => $lab
+            'lab_id' => $ctx['lab_id']
         ]);
 
         $modules = $service->getAccessModules($isMaster, false);
@@ -141,14 +135,8 @@ class RolePermissionsController extends Controller
      */
     public function show($id)
     {
-        $currentUser = auth()->user();
-        $labUser = LabUser::where('user_id', $currentUser->id)->first();
-        $lab = $labUser ? $labUser->lab_id  : 0;
-
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
-
-        $role = Role::where('lab_id', $lab)->with('users')->findOrFail($id);
-
+        $ctx = $this->labContext(request());
+        $role = Role::where('lab_id', $ctx['lab_id'])->with('users')->findOrFail($id);
         return response()->json([
             'id' => $role->id,
             'name' => $role->name,
@@ -170,15 +158,12 @@ class RolePermissionsController extends Controller
      */
     public function update(Request $request, $id, NavigationAccessService $service)
     {
-        $currentUser = auth()->user();
-        $labUser = LabUser::where('user_id', $currentUser->id)->first();
-        $lab = $labUser ? $labUser->lab_id  : 0;
-        $isMaster =  $labUser ? false : true;
+        $ctx = $this->labContext(request());
+        $isMaster =  $ctx['lab_id'] == 0  ? false : true;
 
-        app(PermissionRegistrar::class)->setPermissionsTeamId($lab);
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $role = Role::where('lab_id', $lab)->findOrFail($id);
+        $role = Role::where('lab_id', $ctx['lab_id'])->findOrFail($id);
 
         $request->validate([
             'accessRight' => 'required|array',

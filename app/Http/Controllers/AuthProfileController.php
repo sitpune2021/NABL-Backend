@@ -5,10 +5,43 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Spatie\Permission\PermissionRegistrar;
 use App\Models\{User};
 
 class AuthProfileController extends Controller
 {
+
+    public function profile()
+    {
+        $user = auth()->user();
+
+        $roles = $user->rolesWithLab()
+            ->get()
+            ->groupBy('lab_id')
+            ->map(function ($group) {
+
+                return [
+                    'lab_id'   => $group->first()->lab_id,
+                    'lab_name' => $group->first()->lab_name ?? 'Master',
+                    'roles'    => $group->map(function ($role) {
+                        return [
+                            'id'          => $role->id,
+                            'name'        => $role->name,
+                            'level'       => $role->level,
+                            'description' => $role->description,
+                        ];
+                    })->values()
+                ];
+            })->values();
+
+        return response()->json([
+            'status' => true,
+            'data'   => [
+                'roles' => $roles
+            ]
+        ]);
+    }
+    
     public function show()
     {
         $user = User::with([
@@ -62,6 +95,7 @@ class AuthProfileController extends Controller
             ]
         ]);
     }
+
     public function update(Request $request)
     {
         $user = auth()->user();
