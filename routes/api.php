@@ -47,6 +47,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::get('/departments/lab-master', [DepartmentController::class, 'labMasterDepartments']);
     Route::post('departments/append-to-master', [DepartmentController::class, 'appendLabDepartmentToMaster']);
     Route::apiResource('departments', DepartmentController::class);
+    Route::get('/units/lab-master', [UnitController::class, 'labMasterUnits']);
+    Route::post('units/append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
     Route::apiResource('units', UnitController::class);
     Route::apiResource('instruments', InstrumentController::class);
     Route::apiResource('templates', TemplateController::class);
