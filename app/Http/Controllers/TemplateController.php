@@ -583,4 +583,124 @@ class TemplateController extends Controller
             ],
         ]);
     }
+    public function labMasterTemplates(Request $request)
+    {
+        $labId = $request->query('lab_id');
+
+        if (!$labId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'lab_id is required'
+            ], 422);
+        }
+
+        $templates = Template::query()
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id')
+            ->whereDoesntHave('overrides', function ($q) {
+                $q->where('owner_type', 'super_admin');
+            })
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $templates
+        ]);
+    }
+
+    public function appendLabTemplateToMaster(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'lab_template_id' => ['required', 'exists:templates,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors'  => $validator->errors(),
+            ], 422);
+        }
+
+        $labTemplate = Template::where('id', $request->lab_template_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $alreadyExists = Template::where('owner_type', 'super_admin')
+            ->where('parent_id', $labTemplate->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Template already appended to master',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+
+            $masterTemplate = Template::create([
+                'parent_id'              => $labTemplate->id,
+                'name'                   => $labTemplate->name,
+                'type'                   => $labTemplate->type,
+                'status'                 => $labTemplate->status,
+                'owner_type'             => 'super_admin',
+                'owner_id'               => null,
+                'appended_from_lab_id'   => $labTemplate->owner_id,
+            ]);
+
+            $currentVersion = $labTemplate->currentVersion;
+
+            if ($currentVersion) {
+
+                TemplateVersion::where('template_id', $masterTemplate->id)
+                    ->update(['is_current' => false]);
+
+                $newVersion = TemplateVersion::create([
+                    'template_id' => $masterTemplate->id,
+                    'major'       => $currentVersion->major,
+                    'minor'       => $currentVersion->minor,
+                    'css'         => $currentVersion->css,
+                    'html'        => $currentVersion->html,
+                    'json_data'   => $currentVersion->json_data,
+                    'is_current'  => true,
+                    'change_type' => 'major',
+                    'message'     => 'Appended from lab template',
+                    'changed_by'  => auth()->id(),
+                ]);
+
+                TemplateChangeHistory::create([
+                    'template_id'         => $masterTemplate->id,
+                    'template_version_id' => $newVersion->id,
+                    'field_name'          => null,
+                    'old_value'           => null,
+                    'new_value'           => json_encode([
+                        'css'  => $newVersion->css,
+                        'html' => $newVersion->html,
+                        'json' => $newVersion->json_data,
+                    ]),
+                    'change_context'      => 'create',
+                    'changed_by'          => auth()->id(),
+                    'message'             => 'Template appended from lab',
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data'    => $masterTemplate->load('currentVersion'),
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append template',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
 }

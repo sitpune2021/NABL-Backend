@@ -149,7 +149,7 @@ class CategoryController extends Controller
             $ctx = $this->labContext(request());
 
             $category = Category::accessible($ctx['lab_id'])->findOrFail($id);
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $category
@@ -275,6 +275,9 @@ class CategoryController extends Controller
             ->where('owner_type', 'lab')
             ->where('owner_id', $labId)
             ->whereNull('parent_id')
+             ->whereDoesntHave('overrides', function ($q) {
+                $q->where('owner_type', 'super_admin');
+            })
             ->orderBy('name')
             ->get();
 
