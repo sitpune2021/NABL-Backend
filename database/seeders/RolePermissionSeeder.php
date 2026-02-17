@@ -42,9 +42,6 @@ class RolePermissionSeeder extends Seeder
     {
         $roles = [
             ['name' => 'Super Admin', 'description' => 'Super Admin',  'level' => 1],
-            ['name' => 'Admin',       'description' => 'Admin',        'level' => 2],
-            ['name' => 'Manager',     'description' => 'Manager',      'level' => 3],
-            ['name' => 'User',        'description' => 'User',      'level' => 4],
         ];
 
         foreach ($roles as $roleData) {
@@ -65,22 +62,6 @@ class RolePermissionSeeder extends Seeder
 
                 'Super Admin' =>
                     $role->syncPermissions(Permission::all()),
-
-                'Admin' =>
-                    $role->syncPermissions(Permission::all()),
-
-                'Manager' =>
-                    $role->syncPermissions(
-                        Permission::where(fn ($q) =>
-                            $q->where('name', 'like', '%.list')
-                              ->orWhere('name', 'like', '%.write')
-                        )->get()
-                    ),
-
-                'User' =>
-                    $role->syncPermissions(
-                        Permission::where('name', 'like', '%.list')->get()
-                    ),
             };
         }
     }
@@ -121,20 +102,25 @@ class RolePermissionSeeder extends Seeder
 
     private function defaultPerms($key)
     {
-        if ($key === 'masters.document.list') {
-            return [
-                ['label' => 'Read', 'value' => 'list'],
-                ['label' => 'Write', 'value' => 'write'],
-                ['label' => 'Data Entry', 'value' => 'data-entry'],
-                ['label' => 'Data Review', 'value' => 'data-review'],
-                ['label' => 'Delete', 'value' => 'delete'],
-            ];
-        }
+         $permissions =   config('master_permissions') ;
 
-        return [
-            ['label' => 'Read', 'value' => 'list'],
-            ['label' => 'Write', 'value' => 'write'],
-            ['label' => 'Delete', 'value' => 'delete'],
-        ];
+        // Remove ".list" from key
+        $baseKey = str_replace('.list', '', $key);
+
+        // Filter permissions matching this module
+        $matchedPermissions = collect($permissions)
+            ->filter(fn ($perm) => str_starts_with($perm, $baseKey))
+            ->map(function ($perm) use ($baseKey) {
+                $action = str_replace($baseKey . '.', '', $perm);
+
+                return [
+                    'label' => ucfirst(str_replace('-', ' ', $action)),
+                    'value' => $action,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        return $matchedPermissions;
     }
 }

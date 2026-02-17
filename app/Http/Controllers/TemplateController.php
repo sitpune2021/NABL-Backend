@@ -25,7 +25,7 @@ class TemplateController extends Controller
             $ctx = $this->labContext($request);
             $query = Template::with('currentVersion');
             
-            if ($ctx['lab_id'] == null) {
+            if ($ctx['lab_id'] == 0) {
                 $query->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);

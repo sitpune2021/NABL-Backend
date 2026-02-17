@@ -102,72 +102,6 @@ class NavigationItemController extends Controller
      */
     public function store(Request $request)
     {
-        $items = $request->all(); // Accept full array of navigation items
-        DB::beginTransaction();
-        try {
-            foreach ($items as $item) {
-                $this->storeNavigationItem($item);
-            }
-
-            DB::commit();
-            return response()->json(['message' => 'Navigation items stored successfully'], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    protected function storeNavigationItem(array $data, $parentId = null)
-    {
-        $validated = validator($data, [
-            'key' => 'required|string|unique:navigation_items,key',
-            'path' => 'nullable|string',
-            'title' => 'required|string',
-            'translateKey' => 'required|string',
-            'icon' => 'required|string',
-            'type' => 'nullable|in:title,collapse,item',
-            'for' => 'required|in:lab,master,both',
-            'is_external_link' => 'boolean|nullable',
-            'authority' => 'array|nullable',
-            'description' => 'string|nullable',
-            'description_key' => 'string|nullable',
-            'layout' => 'nullable|in:default,columns,tabs',
-            'show_column_title' => 'boolean|nullable',
-            'columns' => 'nullable|integer|between:1,5',
-            'order' => 'integer|nullable',
-        ])->validate();
-
-        // Map camelCase to snake_case
-        $itemData = [
-            'key' => $validated['key'],
-            'path' => $validated['path'] ?? null,
-            'title' => $validated['title'],
-            'translate_key' => $validated['translateKey'],
-            'icon' => $validated['icon'],
-            'type' => $validated['type'] ?? 'item',
-            'for' => $validated['for'] ?? 'both',
-            'is_external_link' => $validated['is_external_link'] ?? false,
-            'authority' => $validated['authority'] ?? [],
-            'description' => $validated['description'] ?? null,
-            'description_key' => $validated['description_key'] ?? null,
-            'parent_id' => $parentId,
-            'layout' => $validated['layout'] ?? null,
-            'show_column_title' => $validated['show_column_title'] ?? false,
-            'columns' => $validated['columns'] ?? null,
-            'order' => $validated['order'] ?? 0,
-        ];
-
-        $item = NavigationItem::create($itemData);
-
-        // Recursively store children if exist (e.g. 'subMenu')
-        if (isset($data['subMenu']) && is_array($data['subMenu'])) {
-            foreach ($data['subMenu'] as $child) {
-                $this->storeNavigationItem($child, $item->id);
-            }
-        }
-
-        return $item;
     }
 
 
@@ -217,7 +151,7 @@ class NavigationItemController extends Controller
     public function accessModules(NavigationAccessService $service)
     {
         $ctx = $this->labContext(request());
-        $isMaster =  $ctx['lab_id'] == 0  ? true : false;
+        $isMaster =  $ctx['lab_id'] == 0  ? false : true;
         return response()->json(
             $service->getAccessModules($isMaster),
             200,

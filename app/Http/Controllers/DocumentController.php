@@ -36,10 +36,9 @@ class DocumentController extends Controller
         try {
             $ctx = $this->labContext($request);
             $query = Document::with('currentVersion.workflowLogs','currentVersion.amendments', 'category');
-
-            if ($ctx['lab_id'] == null) {
-                 $query->where('owner_type', 'super_admin')
-                ->whereNull('owner_id');
+            
+            if ($ctx['lab_id'] == 0) {
+                 $query->where('owner_type', 'super_admin');
             } else {
                 $query->where('owner_type', 'lab')
               ->where('owner_id', $ctx['lab_id']);
@@ -188,7 +187,6 @@ class DocumentController extends Controller
 
                     if ($templateId) {
                         $template = Template::find($templateId);
-
                         
                         DocumentVersionTemplate::create([
                             'document_version_id' => $version->id,
@@ -241,8 +239,8 @@ class DocumentController extends Controller
         try {
             $document = Document::with([
                     'departments:id',
-                'versions.templates.template.currentVersion',
-                'versions.workflowLogs.user',
+                    'versions.templates.template.currentVersion',
+                    'versions.workflowLogs.user',
                     'currentVersion.templates.template.currentVersion'
             ])->findOrFail($id);
 
