@@ -33,7 +33,7 @@ class NavigationAccessService
                         'name' => $child->title . ' Management',
                         'description' => 'Access control for ' . strtolower($child->title),
                         'linkedMenuKeys' => [$child->key],
-                        'accessor' => $this->getDefaultAccessors($child->key),
+                        'accessor' => $this->getDefaultAccessors($child->key, $isMaster),
                     ];
                 }
             }
@@ -46,7 +46,7 @@ class NavigationAccessService
                         'name' => $child->title . ' Management',
                         'description' => 'Access control for ' . strtolower($child->title),
                         'linkedMenuKeys' => [$child->key],
-                        'accessor' => $this->getDefaultAccessors($child->key),
+                        'accessor' => $this->getDefaultAccessors($child->key, $isMaster),
                     ];
                 }
             }
@@ -57,20 +57,28 @@ class NavigationAccessService
         return $modules;
     }
 
-    protected function getDefaultAccessors(string $key): array
+    protected function getDefaultAccessors(string $key, bool $isMaster): array
     {
-        return $key === 'masters.document.list'
-            ? [
-                ['label' => 'Read', 'value' => 'list'],
-                ['label' => 'Write', 'value' => 'write'],
-                ['label' => 'Data Entry', 'value' => 'data-entry'],
-                ['label' => 'Data Review', 'value' => 'data-review'],
-                ['label' => 'Delete', 'value' => 'delete'],
-            ]
-            : [
-                ['label' => 'Read', 'value' => 'list'],
-                ['label' => 'Write', 'value' => 'write'],
-                ['label' => 'Delete', 'value' => 'delete'],
-            ];
+        $permissions =  !$isMaster ? config('master_permissions') : config('user_permissions');
+
+        // Remove ".list" from key
+        $baseKey = str_replace('.list', '', $key);
+
+        // Filter permissions matching this module
+        $matchedPermissions = collect($permissions)
+            ->filter(fn ($perm) => str_starts_with($perm, $baseKey))
+            ->map(function ($perm) use ($baseKey) {
+                $action = str_replace($baseKey . '.', '', $perm);
+
+                return [
+                    'label' => ucfirst(str_replace('-', ' ', $action)),
+                    'value' => $action,
+                ];
+            })
+            ->values()
+            ->toArray();
+
+        return $matchedPermissions;
     }
+
 }

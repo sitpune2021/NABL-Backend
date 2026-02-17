@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 
 // Public routes
 Route::post('/sign-in', [AuthController::class,'login'])->middleware('throttle:5,1');
-Route::apiResource('navigation-items', NavigationItemController::class);
+Route::apiResource('navigation-items', NavigationItemController::class)->only(['index']);
 
 // Protected routes
 Route::middleware(['auth:api', 'throttle:api'])->group(function () {

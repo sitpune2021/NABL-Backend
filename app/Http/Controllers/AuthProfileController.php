@@ -29,6 +29,9 @@ class AuthProfileController extends Controller
                             'name'        => $role->name,
                             'level'       => $role->level,
                             'description' => $role->description,
+                            'permissions' => $role->permissions
+                            ->pluck('name')
+                            ->values()->push('home', 'accessDenied')
                         ];
                     })->values()
                 ];

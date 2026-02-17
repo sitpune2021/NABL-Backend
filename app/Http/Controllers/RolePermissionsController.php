@@ -69,8 +69,8 @@ class RolePermissionsController extends Controller
             'accessRight' => 'required|array',
         ]);
 
-        $isMaster =  $ctx['lab_id'] == 0  ? true : false;
         $ctx = $this->labContext(request());
+        $isMaster =  $ctx['lab_id'] == 0  ? false : true;
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 

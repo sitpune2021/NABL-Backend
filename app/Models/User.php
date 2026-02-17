@@ -129,7 +129,7 @@ class User extends Authenticatable implements JWTSubject
                 'roles.*',
                 'model_has_roles.lab_id',
                 'labs.name as lab_name'
-            );
+            )->with('permissions'); // eager load permissions;
     }
 
 
