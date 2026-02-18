@@ -342,4 +342,27 @@ class CategoryController extends Controller
         ], 500);
     }
 }
+public function labAllCategories(Request $request)
+{
+    $labId = $request->query('lab_id');
+
+    if (!$labId) {
+        return response()->json([
+            'success' => false,
+            'message' => 'lab_id is required'
+        ], 422);
+    }
+
+    $categories = Category::where('owner_type', 'lab')
+        ->where('owner_id', $labId)
+        ->whereNull('parent_id')
+        ->orderBy('name')
+        ->get();
+
+    return response()->json([
+        'success' => true,
+        'data' => $categories
+    ]);
+}
+
 }
