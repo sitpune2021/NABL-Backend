@@ -35,6 +35,7 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::post('data-entry', [DocumentController::class, 'dataEntry']);
     Route::get('data-entry/{id}', [DocumentController::class, 'getDataEntriesByDocument']);
     Route::post('documents/workflow-action', [DocumentController::class, 'workflowAction']);
+    Route::get('generate-document-number', [DocumentController::class, 'generateDocumentNumber']);
 
     Route::apiResource('users', UserController::class);
     Route::apiResource('roles', RolePermissionsController::class);
