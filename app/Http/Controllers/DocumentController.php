@@ -655,4 +655,42 @@ class DocumentController extends Controller
             'workflow_state' => $state
         ]);
     }
+
+    public function generateDocumentNumber(Request $request)
+    {
+        $deptName = trim($request->input('departmentName'));
+
+        if (!$deptName) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Department name is required'
+            ], 400);
+        }
+
+        $lastNumber = Document::where('number', 'like', $deptName . '-%')
+            ->selectRaw("
+                MAX(
+                    CAST(
+                        split_part(
+                            number,
+                            '-',
+                            array_length(string_to_array(number, '-'),1)
+                        ) AS INTEGER
+                    )
+                ) as max_seq
+            ")
+            ->value('max_seq');
+
+        $newSuffix = $lastNumber ? $lastNumber + 1 : 1;
+
+        $newNumber = $deptName . '-' . $newSuffix;
+
+        return response()->json([
+            'success' => true,
+            'documentNumber' => $newNumber
+        ], 200);
+    }
+
+
+
 }

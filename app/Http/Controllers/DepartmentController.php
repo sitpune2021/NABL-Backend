@@ -24,7 +24,7 @@ class DepartmentController extends Controller
             $ctx = $this->labContext($request);
             $query = Department::query();
 
-            if ($ctx['lab_id'] == null) {
+            if ($ctx['lab_id'] == 0) {
                 $query->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
