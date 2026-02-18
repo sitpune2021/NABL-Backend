@@ -25,7 +25,7 @@ class SubCategoryController extends Controller
 
             $query = SubCategory::with('category');
 
-            if ($ctx['lab_id'] == null) {
+            if ($ctx['lab_id'] == 0) {
                 $query->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
