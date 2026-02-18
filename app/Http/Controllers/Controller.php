@@ -10,17 +10,9 @@ abstract class Controller
     {
         $labId = (int) $request->header('X-Lab-Id', 0);
 
-        if ($labId === 0) {
-            return [
-                'lab_id'     => null,
-                'owner_type' => 'super_admin',
-                'owner_id'   => null,
-            ];
-        }
-
         return [
             'lab_id'     => $labId,
-            'owner_type' => 'lab',
+            'owner_type' => $labId === 0 ? 'super_admin' : 'lab',
             'owner_id'   => $labId,
         ];
     }
