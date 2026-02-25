@@ -207,39 +207,84 @@ return [
     "meta"=> [],
     "subMenu"=> [
       [
-        "key"=> "clients.lab.list",
-        "path"=> "/clients/lab/list",
-        "title"=> "Lab",
-        "translateKey"=> "nav.clientsLab.list",
+        "key"=> "clients.lab",
+        "path"=> "",
+        "title"=> "Labs",
+        "translateKey"=> "nav.clientsLab",
         "icon"=> "sharedComponentDoc",
-        "type"=> "item",
+        "type"=> "collapse",
         "for"=> "master",
-        "authority"=> [],
         "meta"=> [
           "description"=> [
-            "translateKey"=> "nav.clientsLab.listDesc",
+            "translateKey"=> "nav.clientsLab.labDesc",
             "label"=> "AI-powered chat systems"
           ]
         ],
-        "subMenu"=> []
-      ],
-      [
-        "key"=> "clients.lab.assignments.list",
+        "subMenu"=> [
+          [  
+            "key"=> 'clients.lab.list',
+            "path"=> "/clients/lab/list",
+            "title"=> 'Labs',
+                        "translateKey"=> 'nav.clientsLab.List',
+                        "icon"=> 'sharedComponentDoc',
+                        "type"=> "item",
+                        "authority"=> [],
+                        "meta"=> [
+                            "description"=> [
+                                "translateKey"=> 'nav.clientsLab.chatDesc',
+                                "label"=> 'AI-powered chat systems',
+                            ],
+                        ],
+                        "subMenu" => [],
+        ],
+           [  
+              "key"=> "clients.lab.assignments.list",
         "path"=> "/clients/lab-assignments/list",
-        "title"=> "Lab Assignments",
-        "translateKey"=> "nav.clientsLab.list",
-        "icon"=> "sharedComponentDoc",
-        "type"=> "item",
-        "for"=> "master",
-        "authority"=> [],
-        "meta"=> [
-          "description"=> [
-            "translateKey"=> "nav.clientsLab.listDesc",
-            "label"=> "AI-powered chat systems"
-          ]
-        ],
-        "subMenu"=> []
+            "title"=> 'Labs Assignments',
+                        "translateKey"=> 'nav.clientsLab.List',
+                        "icon"=> 'sharedComponentDoc',
+                        "type"=> "item",
+                        "authority"=> [],
+                        "meta"=> [
+                            "description"=> [
+                                "translateKey"=> 'nav.clientsLab.chatDesc',
+                                "label"=> 'AI-powered chat systems',
+                            ],
+                        ],
+                        "subMenu" => [],
+        ]
+        ]
       ]
+    ]
+  ],
+    [
+    "key"=> "works",
+    "path"=> "",
+    "title"=> "Works",
+    "translateKey"=> "nav.works",
+    "icon"=> "concepts",
+    "type"=> "title",
+    "for"=> "lab",
+    "authority"=> [],
+    "meta"=> [],
+    "subMenu"=> [
+       [
+          "key"=> "works.tasks.list",
+          "path"=> "/works/tasks/list",
+          "title"=> "Tasks",
+          "translateKey"=> "nav.worksTasks.list",
+          "icon"=> "documentation",
+          "type"=> "item",
+          "for"=> "lab",
+          "authority"=> [],
+          "meta"=> [
+            "description"=> [
+              "translateKey"=> "nav.worksTasks.listDesc",
+              "label"=> "AI-powered chat systems"
+            ]
+          ],
+          "subMenu"=> []
+       ],
     ]
   ],
   [
@@ -294,7 +339,7 @@ return [
         "translateKey"=> "nav.settingsClauses.list",
         "icon"=> "helpCeterEditArticle",
         "type"=> "item",
-        "for"=> "master",
+        "for"=> "both",
         "authority"=> [],
         "meta"=> [
           "description"=> [
@@ -305,7 +350,7 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "settings.account",
+        "key"=> "settings.account.list",
         "path"=> "/settings/account/profile",
         "title"=> "Account",
         "translateKey"=> "nav.settingsAccount",
@@ -328,7 +373,7 @@ return [
         "translateKey"=> "nav.settingsMenu.list",
         "icon"=> "groupMenu",
         "type"=> "item",
-        "for"=> "both",
+        "for"=> "master",
         "authority"=> [],
         "meta"=> [],
         "subMenu"=> []

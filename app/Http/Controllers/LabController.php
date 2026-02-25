@@ -113,19 +113,21 @@ class LabController extends Controller
                     'is_primary' => $phone['is_primary'] ?? false,
                 ]);
             }
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
+            $mandatoryLevels = [1, 2];
 
-            $masterRoles = Role::where('lab_id', 0)->get();
-            foreach ($masterRoles as $masterRole) {
+            foreach ($mandatoryLevels as $level) {
                     app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
-                    $labRole = Role::Create(
-                        [
-                            'name'       => $masterRole->name,
-                            'lab_id'     => $lab->id,
-                            'level'       => $masterRole->level,
-                            'description' => $masterRole->description,
-                        ]
-                    );
+                    app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+                    $role = Role::create([
+                        'name' => $level == 1 ? 'Super Admin' : 'Admin',
+                        'lab_id' => $lab->id,
+                        'level' => $level,
+                        'description' => $level == 1 
+                            ? 'Super Admin Role'
+                            : 'Admin Role'
+                    ]);
+                    
                     $moduleMap = [];
                     foreach ($modules as $module) {
                         $moduleMap[$module['key']] = $module['key'];
@@ -137,8 +139,10 @@ class LabController extends Controller
                             $permissions[] = $module['key'] . '.' . $action['value'];
                         }
                     }
-                    $labRole->syncPermissions($permissions);
 
+                    $role->syncPermissions($permissions);
+
+                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
                     app(PermissionRegistrar::class)->forgetCachedPermissions();
                 }
 
@@ -159,6 +163,7 @@ class LabController extends Controller
                     ]
                 );
                 app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id); // MASTER
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
 
                 $labSuperAdminRole = Role::where('level', 1)
                     ->where('lab_id', $lab->id)
@@ -221,6 +226,7 @@ class LabController extends Controller
                     );
 
                     app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id); // MASTER
+                    app(PermissionRegistrar::class)->forgetCachedPermissions();
 
                     $labadminRole = Role::where('level', 2)
                         ->where('lab_id', $lab->id)
@@ -262,15 +268,19 @@ class LabController extends Controller
                             ['owner_type', '=', 'lab'],
                             ['owner_id', '=', $lab->id],
                         ])->first();
+
+                        app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id); // MASTER
+                        app(PermissionRegistrar::class)->forgetCachedPermissions();
+                        $roleIds = Role::where([
+                            'level' => 2,
+                            'lab_id' => $lab->id
+                        ])->firstOrFail();
                         
                         $this->assignULDR(
                             $admin->id,
                             $loc['location_name'],
                             $departmentOg->id,
-                            Role::where([
-                                'level' => 2,
-                                'lab_id' => $lab->id
-                            ])->first()->id
+                            $roleIds->id
                         );
                     }
                 }

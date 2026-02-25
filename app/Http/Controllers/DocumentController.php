@@ -691,6 +691,65 @@ class DocumentController extends Controller
         ], 200);
     }
 
+    public function dataEntryTask(Request $request)
+    {
+        try {
+            $ctx = $this->labContext($request);
+            $query = Document::with('currentVersion.workflowLogs','currentVersion.amendments', 'category');
+            
+            if ($ctx['lab_id'] == 0) {
+                 $query->where('owner_type', 'super_admin');
+            } else {
+                $query->where('owner_type', 'lab')
+              ->where('owner_id', $ctx['lab_id']);
+            }
 
+            // Search
+        if ($request->filled('query')) {
+                $search = $request->input('query');
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'LIKE', "%{$search}%");
+                });
+        }
+
+             // Sorting
+            $sortKey = $request->input('sort.key', 'id'); // default sort by id
+            $sortOrder = $request->input('sort.order', 'asc'); // default ascending
+
+            $allowedSortColumns = ['id', 'name','status','created_at', 'updated_at'];
+            $allowedSortOrder = ['asc', 'desc'];
+
+            if (in_array($sortKey, $allowedSortColumns) && in_array(strtolower($sortOrder), $allowedSortOrder)) {
+                $query->orderBy($sortKey, $sortOrder);
+            }
+
+                    // Pagination
+            $pageIndex = (int) $request->input('pageIndex', 1);
+            $pageSize = (int) $request->input('pageSize', 10);
+
+            $documents = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+           
+            $documents->getCollection()->transform(function ($doc) {
+                $doc->versions_count  = $doc->versions()->count();
+                $doc->current_vrsn = optional($doc->currentVersion)->full_version;
+
+                return $doc;
+            });
+
+
+            return response()->json([
+            'status' => true,
+            'data' => $documents->items(),
+            'total' => $documents->total()
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch documents',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
 
 }
