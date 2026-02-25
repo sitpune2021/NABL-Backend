@@ -62,7 +62,7 @@ class DocumentVersion extends Model
         return $this->hasMany(DocumentHistory::class);
     }
 
-      public function templates()
+    public function templates()
     {
         return $this->hasMany(DocumentVersionTemplate::class);
     }

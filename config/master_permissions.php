@@ -23,10 +23,10 @@ return [
     'masters.unit.delete',
 
     'masters.template.list',
-    'masters.template.sync',
     'masters.template.write',
     'masters.template.write.version.list',
     'masters.template.write.version.write',
+    'masters.template.sync',
     'masters.template.delete',
 
     'masters.document.list',
@@ -54,6 +54,17 @@ return [
     'masters.instrument.sync',
     'masters.instrument.delete',
 
+    'clients.lab.list',
+    'clients.lab.write',
+    'clients.lab.delete',
+    'clients.lab.location.list',
+    'clients.lab.location.write',
+    'clients.lab.location.delete',
+
+    'clients.lab.assignments.list',
+    'clients.lab.assignments.write',
+    'clients.lab.assignments.delete',
+
     'settings.rolesPermission.list',
     'settings.rolesPermission.write',
     'settings.rolesPermission.delete',
@@ -67,14 +78,6 @@ return [
     'settings.standard.clause.write',
     'settings.standard.action',
     'settings.standard.delete',
-
-    'clients.lab.list',
-    'clients.lab.write',
-    'clients.lab.delete',
-
-    'clients.lab.assignments.list',
-    'clients.lab.assignments.write',
-    'clients.lab.assignments.delete',
 
     'settings.account.list',
     'settings.account.write',
