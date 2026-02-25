@@ -43,6 +43,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::apiResource('roles', RolePermissionsController::class);
     Route::get('/categories/lab-master', [CategoryController::class, 'labMasterCategories']);
     Route::post('categories/append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
+    Route::get('/categories/lab-all', [CategoryController::class, 'labAllCategories']);
+    Route::post('categories/append-to-lab', [CategoryController::class, 'appendMasterCategoryToLab']);
     Route::apiResource('categories', CategoryController::class);
     Route::get('sub-categories/lab-master', [SubCategoryController::class, 'labMasterSubCategories']);
     Route::post('sub-categories/append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
@@ -54,6 +56,8 @@ Route::middleware(['auth:api', 'throttle:api'])->group(function () {
     Route::post('units/append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
     Route::apiResource('units', UnitController::class);
     Route::apiResource('instruments', InstrumentController::class);
+    Route::get('templates/lab-master', [TemplateController::class, 'labMasterTemplates']);
+    Route::post('templates/append-to-master', [TemplateController::class, 'appendLabTemplateToMaster']);
     Route::apiResource('templates', TemplateController::class);
     Route::get('templates/versions/{templateId}',[TemplateController::class, 'versions'] );
     Route::get('templates/{templateId}/versions/{versionId}', [TemplateController::class, 'showVersion']);

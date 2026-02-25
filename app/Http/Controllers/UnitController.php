@@ -261,6 +261,9 @@ class UnitController extends Controller
         $units = Unit::where('owner_type', 'lab')
             ->where('owner_id', $labId)
             ->whereNull('parent_id')
+             ->whereDoesntHave('overrides', function ($q) {
+                $q->where('owner_type', 'super_admin');
+            })
             ->orderBy('name')
             ->get();
 

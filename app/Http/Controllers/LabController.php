@@ -34,6 +34,7 @@ use App\Models\{Lab,
     TemplateChangeHistory,
     UserAssignment
     };
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class LabController extends Controller
 {
