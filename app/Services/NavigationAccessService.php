@@ -21,64 +21,90 @@ class NavigationAccessService
     protected function mapToAccessModules($items, bool $isMaster, bool $isGroup): array
     {
         $modules = [];
-        $relation = 'children';
-        if ($isGroup) {
-            foreach ($items as $item) {
-                foreach ($item->{$relation} ?? [] as $child) {
-                    [$group, $module] = explode('.', str_replace('.list', '', $child->key));
-                    
-                    $modules[$group][] = [
-                        'id' => $module,
-                        'key' => str_replace('.list', '', $child->key),
-                        'name' => $child->title . ' Management',
-                        'description' => 'Access control for ' . strtolower($child->title),
-                        'linkedMenuKeys' => [$child->key],
-                        'accessor' => $this->getDefaultAccessors($child->key, $isMaster),
-                    ];
-                }
-            }
-        }else{
-            foreach ($items as $item) {
-                foreach ($item->{$relation} ?? [] as $child) {
-                    $modules[] = [
-                        'id' => str_replace([$item->key . '.', '.list'], '', $child->key),
-                        'key' => str_replace('.list', '', $child->key),
-                        'name' => $child->title . ' Management',
-                        'description' => 'Access control for ' . strtolower($child->title),
-                        'linkedMenuKeys' => [$child->key],
-                        'accessor' => $this->getDefaultAccessors($child->key, $isMaster),
-                    ];
-                }
+        foreach ($items as $item) {
+            $this->extractModules($item, $modules, $isMaster, $isGroup);
+        }
+
+        return $modules;
+    }
+
+    protected function extractModules($item, &$modules, bool $isMaster, bool $isGroup)
+    {
+        // Only process module menu
+        if (str_ends_with($item->key, '.list')) {
+
+            $baseKey = str_replace('.list', '', $item->key);
+
+            $parts = explode('.', $baseKey);
+            $group = $parts[0];
+            $module = end($parts);
+
+            $moduleData = [
+                'id' => $module,
+                'key' => $baseKey,
+                'name' => $item->title . ' Management',
+                'description' => 'Access control for ' . strtolower($item->title),
+                'linkedMenuKeys' => [$item->key],
+                'accessor' => $this->getDefaultAccessors($item->key, $isMaster),
+            ];
+
+            if ($isGroup) {
+                $modules[$group][] = $moduleData;
+            } else {
+                $modules[] = $moduleData;
             }
         }
 
-        
-
-        return $modules;
+        // 🔁 Traverse all children recursively
+        foreach ($item->children ?? [] as $child) {
+            $this->extractModules($child, $modules, $isMaster, $isGroup);
+        }
     }
 
     protected function getDefaultAccessors(string $key, bool $isMaster): array
     {
         $permissions =  !$isMaster ? config('master_permissions') : config('user_permissions');
-
-        // Remove ".list" from key
+        
         $baseKey = str_replace('.list', '', $key);
 
-        // Filter permissions matching this module
-        $matchedPermissions = collect($permissions)
-            ->filter(fn ($perm) => str_starts_with($perm, $baseKey))
+        return collect($permissions)
+            ->filter(function ($perm) use ($baseKey) {
+
+                if (!str_starts_with($perm, $baseKey . '.')) {
+                    return false;
+                }
+
+                // check next segment is valid action
+                $remaining = substr($perm, strlen($baseKey) + 1);
+                $firstSegment = explode('.', $remaining)[0];
+
+                // allowed action keywords
+                $allowed = [
+                    'list',
+                    'write',
+                    'delete',
+                    'sync',
+                    'action',
+                    'workflow-logs',
+                    'version',
+                    'clause',
+                    'location'
+                ];
+
+                return in_array($firstSegment, $allowed);
+
+            })
             ->map(function ($perm) use ($baseKey) {
+
                 $action = str_replace($baseKey . '.', '', $perm);
 
                 return [
-                    'label' => ucfirst(str_replace('-', ' ', $action)),
+                    'label' => ucfirst(str_replace(['-', '.'], ' ', $action)),
                     'value' => $action,
                 ];
             })
             ->values()
             ->toArray();
-
-        return $matchedPermissions;
     }
 
 }

@@ -16,16 +16,14 @@ class NavigationItemController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
+        $ctx = $this->labContext($request);
         $user = Auth::user();
-        $labUser = LabUser::where('user_id', $user->id)->first();
-        $lab =  $labUser ? $labUser->lab_id  : 0;
-        $isLabUser = !is_null($labUser);
-        request()->attributes->set('isLabUser', $isLabUser);
+        request()->attributes->set('isLabUser', $ctx['lab_id'] != 0);
         $items = NavigationItem::with('children')
-            ->when($lab > 0 , fn ($q) => $q->forLab())
-            ->when($lab == 0 , fn ($q) => $q->forMaster())
+            ->when($ctx['lab_id'] > 0 , fn ($q) => $q->forLab())
+            ->when($ctx['lab_id'] == 0 , fn ($q) => $q->forMaster())
             ->whereNull('parent_id')
             ->orderBy('order')
             ->get();
