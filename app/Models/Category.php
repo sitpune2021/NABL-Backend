@@ -15,7 +15,6 @@ class Category extends Model
         'identifier',
         'owner_type',
         'owner_id',
-        'appended_from_lab_id',
     ];
 
     protected $casts = [
@@ -27,6 +26,7 @@ class Category extends Model
         'is_master',
         'is_override',
         'is_custom',
+        'is_appended', // new
     ];
 
 
@@ -48,6 +48,21 @@ class Category extends Model
         return $this->hasMany(Category::class, 'parent_id');
     }
 
+    public function lab()
+    {
+        return $this->hasOneThrough(
+            Lab::class,      // Final Model
+            Category::class, // Intermediate (Lab Category)
+
+            'id',            // Intermediate PK (categories.id)
+            'id',            // Final PK (labs.id)
+
+            'parent_id',     // FK on SuperAdmin Category
+            'owner_id'       // FK on Lab Category
+        )->where('categories.owner_type', 'lab')  // 🔥 VERY IMPORTANT
+        ->select('labs.id', 'labs.name');
+    }
+
     public function scopeSuperAdmin($query)
     {
         return $query->where('owner_type', 'super_admin');
@@ -61,23 +76,36 @@ class Category extends Model
 
     public function getIsMasterAttribute(): bool
     {
-        return $this->owner_type === 'super_admin';
+        return $this->owner_type === 'super_admin'
+            && $this->parent_id === null;
     }
 
-    /**
-     * Is lab override of a master category
-     */
+    public function appendedMaster()
+    {
+        return $this->hasOne(Category::class, 'parent_id')
+            ->where('owner_type', 'super_admin');
+    }
+
     public function getIsOverrideAttribute(): bool
     {
-        return $this->owner_type === 'lab' && $this->parent_id !== null;
+        return $this->owner_type === 'lab'
+            && $this->parent_id !== null;
     }
 
-    /**
-     * Is lab-only custom category
-     */
     public function getIsCustomAttribute(): bool
     {
-        return $this->owner_type === 'lab' && $this->parent_id === null;
+        if ($this->owner_type !== 'lab' || $this->parent_id !== null) {
+            return false;
+        }
+
+        return $this->appendedMaster === null;
+    }
+
+    public function getIsAppendedAttribute(): bool
+    {
+        return $this->owner_type === 'lab'
+            && $this->parent_id === null
+            && $this->appendedMaster !== null;
     }
 
     public function scopeAccessible($query, $labId)
