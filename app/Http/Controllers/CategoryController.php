@@ -25,7 +25,7 @@ class CategoryController extends Controller
             $query = Category::query();
 
             if ($ctx['lab_id'] == 0) {
-                $query->SuperAdmin();
+                $query->with('lab')->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
             }
@@ -262,6 +262,91 @@ class CategoryController extends Controller
 
     public function labMasterCategories(Request $request)
     {
+        $validated = $request->validate([
+            'id'  => ['required', 'integer', 'exists:labs,id'],
+            'key' => ['nullable', 'string', 'in:all,master']
+        ]);
+
+        $labId = $validated['id'];
+        $key   = $validated['key'] ?? null;
+
+        $categories = Category::query()
+            ->with('appendedMaster')
+            ->select([
+                'id',
+                'name',
+                'identifier',
+                'owner_id',
+                'owner_type',
+                'parent_id'
+            ])
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id')
+            ->when($key !== 'all', function ($query) {
+                $query->whereDoesntHave('appendedMaster');
+            })
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $categories
+        ]);
+    }
+
+    public function appendLabCategoryToMaster(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'lab_category_id' => ['required', 'exists:categories,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $labCategory = Category::where('id', $request->lab_category_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        if ($labCategory->appendedMaster()->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category already appended to master',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $masterCategory = Category::create([
+                'parent_id'  => $labCategory->id,
+                'name'       => $labCategory->name,
+                'identifier' => $labCategory->identifier,
+                'owner_type' => 'super_admin',
+                'owner_id'   => null,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $masterCategory,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append category',
+            ], 500);
+        }
+    }
+
+    public function labAllCategories(Request $request)
+    {
         $labId = $request->query('lab_id');
 
         if (!$labId) {
@@ -271,13 +356,9 @@ class CategoryController extends Controller
             ], 422);
         }
 
-        $categories = Category::query()
-            ->where('owner_type', 'lab')
+        $categories = Category::where('owner_type', 'lab')
             ->where('owner_id', $labId)
             ->whereNull('parent_id')
-             ->whereDoesntHave('overrides', function ($q) {
-                $q->where('owner_type', 'super_admin');
-            })
             ->orderBy('name')
             ->get();
 
@@ -287,137 +368,60 @@ class CategoryController extends Controller
         ]);
     }
 
-
-    public function appendLabCategoryToMaster(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'lab_category_id' => ['required', 'exists:categories,id'],
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors(),
-        ], 422);
-    }
-
-    $labCategory = Category::where('id', $request->lab_category_id)
-        ->where('owner_type', 'lab')
-        ->whereNull('parent_id')
-        ->firstOrFail();
-
-    $alreadyExists = Category::where('owner_type', 'super_admin')
-        ->where('parent_id', $labCategory->id)
-        ->exists();
-
-    if ($alreadyExists) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Category already appended to master',
-        ], 409);
-    }
-
-    DB::beginTransaction();
-    try {
-        $masterCategory = Category::create([
-            'parent_id'  => $labCategory->id,
-            'name'       => $labCategory->name,
-            'identifier' => $labCategory->identifier,
-            'owner_type' => 'super_admin',
-            'owner_id'   => null,
-            'appended_from_lab_id' => $labCategory->owner_id,
+    public function appendMasterCategoryToLab(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'master_category_id' => ['required', 'exists:categories,id'],
+            'lab_id' => ['required', 'exists:labs,id'],
         ]);
 
-        DB::commit();
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
-        return response()->json([
-            'success' => true,
-            'data' => $masterCategory,
-        ], 201);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to append category',
-        ], 500);
+        $masterCategory = Category::where('id', $request->master_category_id)
+            ->where('owner_type', 'super_admin')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        // Already appended ka check kara
+        $alreadyExists = Category::where('owner_type', 'lab')
+            ->where('owner_id', $request->lab_id)
+            ->where('parent_id', $masterCategory->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Category already appended to lab',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $labCategory = Category::create([
+                'parent_id'  => $masterCategory->id,
+                'name'       => $masterCategory->name,
+                'identifier' => $masterCategory->identifier,
+                'owner_type' => 'lab',
+                'owner_id'   => $request->lab_id,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $labCategory,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append category',
+            ], 500);
+        }
     }
-}
-public function labAllCategories(Request $request)
-{
-    $labId = $request->query('lab_id');
-
-    if (!$labId) {
-        return response()->json([
-            'success' => false,
-            'message' => 'lab_id is required'
-        ], 422);
-    }
-
-    $categories = Category::where('owner_type', 'lab')
-        ->where('owner_id', $labId)
-        ->whereNull('parent_id')
-        ->orderBy('name')
-        ->get();
-
-    return response()->json([
-        'success' => true,
-        'data' => $categories
-    ]);
-}
-public function appendMasterCategoryToLab(Request $request)
-{
-    $validator = Validator::make($request->all(), [
-        'master_category_id' => ['required', 'exists:categories,id'],
-        'lab_id' => ['required', 'exists:labs,id'],
-    ]);
-
-    if ($validator->fails()) {
-        return response()->json([
-            'success' => false,
-            'errors' => $validator->errors(),
-        ], 422);
-    }
-
-    $masterCategory = Category::where('id', $request->master_category_id)
-        ->where('owner_type', 'super_admin')
-        ->whereNull('parent_id')
-        ->firstOrFail();
-
-    // Already appended ka check kara
-    $alreadyExists = Category::where('owner_type', 'lab')
-        ->where('owner_id', $request->lab_id)
-        ->where('parent_id', $masterCategory->id)
-        ->exists();
-
-    if ($alreadyExists) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Category already appended to lab',
-        ], 409);
-    }
-
-    DB::beginTransaction();
-    try {
-        $labCategory = Category::create([
-            'parent_id'  => $masterCategory->id,
-            'name'       => $masterCategory->name,
-            'identifier' => $masterCategory->identifier,
-            'owner_type' => 'lab',
-            'owner_id'   => $request->lab_id,
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'success' => true,
-            'data' => $labCategory,
-        ], 201);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to append category',
-        ], 500);
-    }
-}
 }

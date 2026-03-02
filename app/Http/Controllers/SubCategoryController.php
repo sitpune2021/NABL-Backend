@@ -253,71 +253,112 @@ class SubCategoryController extends Controller
             ], 500);
         }
     }
+
     public function labMasterSubCategories(Request $request)
     {
-        $labId = $request->query('lab_id');
-        $categoryId = $request->query('category_id');
+        $validated = $request->validate([
+            'id'     => ['required', 'integer', 'exists:labs,id'],
+            'catId'  => ['required', 'integer', 'exists:categories,id'],
+            'key'    => ['nullable', 'string', 'in:all,master'],
+        ]);
 
-        if (!$labId || !$categoryId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'lab_id and category_id are required'
-            ], 422);
-        }
+        $labId      = $validated['id'];
+        $categoryId = $validated['catId'];
+        $key        = $validated['key'] ?? null;
 
-        $subCategories = SubCategory::where('owner_type', 'lab')
+        $subCategories = SubCategory::query()
+            ->with('appendedMaster') // 🔥 prevent N+1
+            ->select([
+                'id',
+                'name',
+                'identifier',
+                'cat_id',
+                'owner_id',
+                'owner_type',
+                'parent_id'
+            ])
+            ->where('owner_type', 'lab')
             ->where('owner_id', $labId)
             ->where('cat_id', $categoryId)
-            ->whereNotIn('id', function ($q) {
-                $q->select('parent_id')
-                    ->from('sub_categories')
-                    ->where('owner_type', 'super_admin')
-                    ->whereNotNull('parent_id');
+            ->whereNull('parent_id')
+            ->when($key !== 'all', function ($query) {
+                $query->whereDoesntHave('appendedMaster');
             })
             ->orderBy('name')
             ->get();
 
         return response()->json([
             'success' => true,
-            'data' => $subCategories
+            'data'    => $subCategories,
         ]);
     }
 
     public function appendLabSubCategoryToMaster(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'lab_subcategory_id' => ['required', 'exists:sub_categories,id'],
+        $validated = $request->validate([
+            'lab_subcategory_id'   => ['required', 'exists:sub_categories,id'],
+            'force_append_category'=> ['nullable', 'boolean'],
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'errors' => $validator->errors(),
-            ], 422);
-        }
+        $force = $validated['force_append_category'] ?? false;
 
-        $labSub = SubCategory::where('id', $request->lab_subcategory_id)
+        $labSub = SubCategory::where('id', $validated['lab_subcategory_id'])
             ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
             ->firstOrFail();
 
-        $exists = SubCategory::where('owner_type', 'super_admin')
-            ->where('parent_id', $labSub->id)
-            ->exists();
+        $labCategory = Category::where('id', $labSub->cat_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
 
-        if ($exists) {
+        // 🔎 Check if category already appended
+        $masterCategory = Category::where('owner_type', 'super_admin')
+            ->where('parent_id', $labCategory->id)
+            ->first();
+
+        if (!$masterCategory && !$force) {
             return response()->json([
                 'success' => false,
-                'message' => 'SubCategory already appended',
+                'needs_category_append' => true,
+                'message' => 'Parent category not appended. Do you want to append both?',
             ], 409);
         }
 
         DB::beginTransaction();
 
         try {
-            $subcategory = SubCategory::create([
+
+            // 🔥 Append category first if needed
+            if (!$masterCategory) {
+                $masterCategory = Category::create([
+                    'parent_id'  => $labCategory->id,
+                    'name'       => $labCategory->name,
+                    'identifier' => $labCategory->identifier,
+                    'owner_type' => 'super_admin',
+                    'owner_id'   => null,
+                ]);
+            }
+
+            // 🔎 Prevent duplicate subcategory
+            $alreadyExists = SubCategory::where('owner_type', 'super_admin')
+                ->where('parent_id', $labSub->id)
+                ->exists();
+
+            if ($alreadyExists) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'SubCategory already appended',
+                ], 409);
+            }
+
+            // 🔥 Append subcategory under MASTER category
+            $masterSub = SubCategory::create([
                 'name'       => $labSub->name,
                 'identifier' => $labSub->identifier,
-                'cat_id'     => $labSub->cat_id,
+                'cat_id'     => $masterCategory->id, // VERY IMPORTANT
                 'parent_id'  => $labSub->id,
                 'owner_type' => 'super_admin',
                 'owner_id'   => null,
@@ -328,16 +369,18 @@ class SubCategoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $subcategory,
+                'data'    => $masterSub,
             ], 201);
+
         } catch (\Throwable $e) {
+
             DB::rollBack();
 
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to append subcategory',
-                'error'   => $e->getMessage(),
             ], 500);
         }
     }
+    
 }

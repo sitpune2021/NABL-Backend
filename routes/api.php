@@ -22,56 +22,162 @@ use App\Http\Controllers\{
     AuthProfileController
 };
 
-// Public routes
-Route::post('/sign-in', [AuthController::class,'login'])->middleware('throttle:5,1');
-Route::apiResource('navigation-items', NavigationItemController::class)->only(['index']);
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-// Protected routes
-Route::middleware(['auth:api', 'throttle:api'])->group(function () {
-    Route::post('sign-out', [AuthController::class,'logout']);
-    Route::get('access-modules', [NavigationItemController::class, 'accessModules']);
-    Route::get('role-levels', [RolePermissionsController::class, 'levels']); // Get role
-    Route::apiResource('documents', DocumentController::class);
-    Route::post('data-entry', [DocumentController::class, 'dataEntry']);
-    Route::get('data-entry/{id}', [DocumentController::class, 'getDataEntriesByDocument']);
-    Route::get('data-entry', [DocumentController::class, 'dataEntryTask']);
+Route::prefix('v1')->group(function () {
 
-    Route::post('documents/workflow-action', [DocumentController::class, 'workflowAction']);
-    Route::get('generate-document-number', [DocumentController::class, 'generateDocumentNumber']);
+    /*
+    |--------------------------------------------------------------------------
+    | Public Routes
+    |--------------------------------------------------------------------------
+    */
 
-    Route::apiResource('users', UserController::class);
-    Route::apiResource('roles', RolePermissionsController::class);
-    Route::get('/categories/lab-master', [CategoryController::class, 'labMasterCategories']);
-    Route::post('categories/append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
-    Route::get('/categories/lab-all', [CategoryController::class, 'labAllCategories']);
-    Route::post('categories/append-to-lab', [CategoryController::class, 'appendMasterCategoryToLab']);
-    Route::apiResource('categories', CategoryController::class);
-    Route::get('sub-categories/lab-master', [SubCategoryController::class, 'labMasterSubCategories']);
-    Route::post('sub-categories/append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
-    Route::apiResource('sub-categories', SubCategoryController::class);
-    Route::get('/departments/lab-master', [DepartmentController::class, 'labMasterDepartments']);
-    Route::post('departments/append-to-master', [DepartmentController::class, 'appendLabDepartmentToMaster']);
-    Route::apiResource('departments', DepartmentController::class);
-    Route::get('/units/lab-master', [UnitController::class, 'labMasterUnits']);
-    Route::post('units/append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
-    Route::apiResource('units', UnitController::class);
-    Route::apiResource('instruments', InstrumentController::class);
-    Route::get('templates/lab-master', [TemplateController::class, 'labMasterTemplates']);
-    Route::post('templates/append-to-master', [TemplateController::class, 'appendLabTemplateToMaster']);
-    Route::apiResource('templates', TemplateController::class);
-    Route::get('templates/versions/{templateId}',[TemplateController::class, 'versions'] );
-    Route::get('templates/{templateId}/versions/{versionId}', [TemplateController::class, 'showVersion']);
-    Route::put('templates/{templateId}/change-current-version',[TemplateController::class, 'changeCurrentVersion']);
-    Route::apiResource('zones', ZoneController::class);
-    Route::apiResource('clusters', ClusterController::class);
-    Route::apiResource('locations', LocationController::class);
-    Route::apiResource('labs', LabController::class);
-    Route::get('lab-assignments', [LabController::class, 'labAssignments']);
-    Route::post('lab-assignments', [LabController::class, 'assignmentUserRole']);
-    Route::apiResource('standards', StandardController::class);
-    Route::get('standards-current', [StandardController::class, 'currentStandards']);
-    Route::apiResource('clauses', ClauseDocumentLinkController::class);
-    Route::get('profile/me', [AuthProfileController::class, 'show']);
-    Route::get('profile', [AuthProfileController::class,'profile']);
-    Route::put('profile/update', [AuthProfileController::class, 'update']);
+    Route::middleware('throttle:5,1')->post('auth/login', [AuthController::class, 'login']);
+
+    Route::get('navigation-items', [NavigationItemController::class, 'index']);
+
+
+    /*
+    |--------------------------------------------------------------------------
+    | Protected Routes
+    |--------------------------------------------------------------------------
+    */
+
+    Route::middleware(['auth:api', 'throttle:api'])->group(function () {
+
+        /*
+        |--------------------------------------------------------------------------
+        | Authentication
+        |--------------------------------------------------------------------------
+        */
+        Route::post('auth/logout', [AuthController::class, 'logout']);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Profile
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('profile')->group(function () {
+            Route::get('me', [AuthProfileController::class, 'show']);
+            Route::get('/', [AuthProfileController::class, 'profile']);
+            Route::put('/', [AuthProfileController::class, 'update']);
+        });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Access & Roles
+        |--------------------------------------------------------------------------
+        */
+        Route::get('access-modules', [NavigationItemController::class, 'accessModules']);
+        Route::get('roles/levels', [RolePermissionsController::class, 'levels']);
+        Route::apiResource('roles', RolePermissionsController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Users
+        |--------------------------------------------------------------------------
+        */
+        Route::apiResource('users', UserController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Documents & Workflow
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('documents')->group(function () {
+
+            Route::get('generate-number', [DocumentController::class, 'generateDocumentNumber']);
+            Route::post('workflow-action', [DocumentController::class, 'workflowAction']);
+
+            Route::prefix('data-entry')->group(function () {
+                Route::post('/', [DocumentController::class, 'dataEntry']);
+                Route::get('/', [DocumentController::class, 'dataEntryTask']);
+                Route::get('{id}', [DocumentController::class, 'getDataEntriesByDocument']);
+            });
+        });
+
+        Route::apiResource('documents', DocumentController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Master Sync Pattern (Reusable Structure)
+        |--------------------------------------------------------------------------
+        */
+
+        Route::prefix('categories')->group(function () {
+            Route::get('sync-master', [CategoryController::class, 'labMasterCategories']);
+            Route::get('lab-all', [CategoryController::class, 'labAllCategories']);
+            Route::post('append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
+            Route::post('append-to-lab', [CategoryController::class, 'appendMasterCategoryToLab']);
+        });
+        Route::apiResource('categories', CategoryController::class);
+
+        Route::prefix('sub-categories')->group(function () {
+            Route::get('sync-master', [SubCategoryController::class, 'labMasterSubCategories']);
+            Route::post('append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
+        });
+        Route::apiResource('sub-categories', SubCategoryController::class);
+
+        Route::prefix('departments')->group(function () {
+            Route::get('lab-master', [DepartmentController::class, 'labMasterDepartments']);
+            Route::post('append-to-master', [DepartmentController::class, 'appendLabDepartmentToMaster']);
+        });
+        Route::apiResource('departments', DepartmentController::class);
+
+        Route::prefix('units')->group(function () {
+            Route::get('lab-master', [UnitController::class, 'labMasterUnits']);
+            Route::post('append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
+        });
+        Route::apiResource('units', UnitController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Templates
+        |--------------------------------------------------------------------------
+        */
+        Route::prefix('templates')->group(function () {
+            Route::get('lab-master', [TemplateController::class, 'labMasterTemplates']);
+            Route::post('append-to-master', [TemplateController::class, 'appendLabTemplateToMaster']);
+
+            Route::get('versions/{templateId}', [TemplateController::class, 'versions']);
+            Route::get('{templateId}/versions/{versionId}', [TemplateController::class, 'showVersion']);
+            Route::put('{templateId}/change-current-version', [TemplateController::class, 'changeCurrentVersion']);
+        });
+        Route::apiResource('templates', TemplateController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Infrastructure
+        |--------------------------------------------------------------------------
+        */
+        Route::apiResource('zones', ZoneController::class);
+        Route::apiResource('clusters', ClusterController::class);
+        Route::apiResource('locations', LocationController::class);
+        Route::apiResource('labs', LabController::class);
+
+        // Route::prefix('labs')->group(function () {
+            Route::get('lab-assignments', [LabController::class, 'labAssignments']);
+            Route::post('lab-assignments', [LabController::class, 'assignmentUserRole']);
+        // });
+
+        /*
+        |--------------------------------------------------------------------------
+        | Standards & Clauses
+        |--------------------------------------------------------------------------
+        */
+        Route::get('standards/current', [StandardController::class, 'currentStandards']);
+        Route::apiResource('standards', StandardController::class);
+        Route::apiResource('clauses', ClauseDocumentLinkController::class);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Instruments
+        |--------------------------------------------------------------------------
+        */
+        Route::apiResource('instruments', InstrumentController::class);
+    });
 });
