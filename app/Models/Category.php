@@ -15,11 +15,13 @@ class Category extends Model
         'identifier',
         'owner_type',
         'owner_id',
+        'status',
     ];
 
     protected $casts = [
         'owner_id'  => 'integer',
         'parent_id' => 'integer',
+        'status'    => 'string',
     ];
 
     protected $appends = [

@@ -16,13 +16,14 @@ class SubCategory extends Model
         'identifier',
         'owner_type',
         'owner_id',
-        'appended_from_lab_id',
+        'status'
     ];
 
     protected $casts = [
         'cat_id'   => 'integer',
         'parent_id'=> 'integer',
         'owner_id' => 'integer',
+        'status' => 'string'
     ];
 
     protected $appends = [
@@ -53,6 +54,20 @@ class SubCategory extends Model
     public function overrides()
     {
         return $this->hasMany(SubCategory::class, 'parent_id');
+    }
+    public function lab()
+    {
+        return $this->hasOneThrough(
+            Lab::class,      // Final Model
+            SubCategory::class, // Intermediate (Lab Category)
+
+            'id',            // Intermediate PK (categories.id)
+            'id',            // Final PK (labs.id)
+
+            'parent_id',     // FK on SuperAdmin Category
+            'owner_id'       // FK on Lab Category
+        )->where('sub_categories.owner_type', 'lab')  // 🔥 VERY IMPORTANT
+        ->select('labs.id', 'labs.name');
     }
 
     // Master copy of lab subcategory

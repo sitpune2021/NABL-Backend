@@ -23,10 +23,10 @@ class SubCategoryController extends Controller
         try {
             $ctx = $this->labContext($request);
 
-            $query = SubCategory::with('category');
+            $query = SubCategory::with('category')->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
-                $query->SuperAdmin();
+                $query->with('lab')->SuperAdmin();;
             } else {
                 $query->ForLab($ctx['lab_id']);
             }
@@ -121,6 +121,7 @@ class SubCategoryController extends Controller
                 'identifier' => $request->identifier,
                 'owner_type' => $ctx['owner_type'],
                 'owner_id'   => $ctx['owner_id'],
+                'status'     => 'completed',
             ]);
 
             DB::commit();
@@ -259,6 +260,8 @@ class SubCategoryController extends Controller
         $validated = $request->validate([
             'id'     => ['required', 'integer', 'exists:labs,id'],
             'catId'  => ['required', 'integer', 'exists:categories,id'],
+            'start_date' => ['nullable', 'date'],
+            'end_date'   => ['nullable', 'date', 'after_or_equal:start_date'],
             'key'    => ['nullable', 'string', 'in:all,master'],
         ]);
 
@@ -266,7 +269,7 @@ class SubCategoryController extends Controller
         $categoryId = $validated['catId'];
         $key        = $validated['key'] ?? null;
 
-        $subCategories = SubCategory::query()
+        $query = SubCategory::query()
             ->with('appendedMaster') // 🔥 prevent N+1
             ->select([
                 'id',
@@ -275,15 +278,23 @@ class SubCategoryController extends Controller
                 'cat_id',
                 'owner_id',
                 'owner_type',
-                'parent_id'
+                'parent_id',
+                'created_at'
             ])
             ->where('owner_type', 'lab')
             ->where('owner_id', $labId)
             ->where('cat_id', $categoryId)
-            ->whereNull('parent_id')
-            ->when($key !== 'all', function ($query) {
-                $query->whereDoesntHave('appendedMaster');
-            })
+            ->whereNull('parent_id');
+        if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+            $query->whereBetween('created_at', [
+                $validated['start_date'] . ' 00:00:00',
+                $validated['end_date'] . ' 23:59:59'
+            ]);
+        }
+        if ($key !== 'all') {
+            $query->whereDoesntHave('appendedMaster');
+        }
+        $subCategories = $query
             ->orderBy('name')
             ->get();
 
@@ -361,8 +372,8 @@ class SubCategoryController extends Controller
                 'cat_id'     => $masterCategory->id, // VERY IMPORTANT
                 'parent_id'  => $labSub->id,
                 'owner_type' => 'super_admin',
-                'owner_id'   => null,
-                'appended_from_lab_id' => $labSub->owner_id,
+                'owner_id'   => $labSub->owner_id,
+                'status'     => 'pending',
             ]);
 
             DB::commit();
@@ -383,4 +394,32 @@ class SubCategoryController extends Controller
         }
     }
     
+    public function pending()
+    {
+        $subCategories = SubCategory::with(['category', 'lab'])
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $subCategories
+        ]);
+    }
+    public function approve(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:sub_categories,id']
+        ]);
+
+        SubCategory::whereIn('id', $validated['ids'])
+            ->update([
+                'status' => 'completed'
+            ]);
+
+        return response()->json([
+            'success' => true
+        ]);
+    }
 }

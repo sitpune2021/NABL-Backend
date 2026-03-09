@@ -113,18 +113,24 @@ Route::prefix('v1')->group(function () {
             Route::get('lab-all', [CategoryController::class, 'labAllCategories']);
             Route::post('append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
             Route::post('append-to-lab', [CategoryController::class, 'appendMasterCategoryToLab']);
+            Route::post('/approve', [CategoryController::class, 'approveCategories']);
+            Route::get('/pending', [CategoryController::class, 'pendingCategories']);
         });
         Route::apiResource('categories', CategoryController::class);
 
         Route::prefix('sub-categories')->group(function () {
             Route::get('sync-master', [SubCategoryController::class, 'labMasterSubCategories']);
             Route::post('append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
+            Route::get('/pending',[SubCategoryController::class,'pending']);
+            Route::post('/approve',[SubCategoryController::class,'approve']);
         });
         Route::apiResource('sub-categories', SubCategoryController::class);
 
         Route::prefix('departments')->group(function () {
             Route::get('lab-master', [DepartmentController::class, 'labMasterDepartments']);
             Route::post('append-to-master', [DepartmentController::class, 'appendLabDepartmentToMaster']);
+            Route::post('/approve', [DepartmentController::class, 'approveDepartments']);
+            Route::get('/pending', [DepartmentController::class, 'pendingDepartments']);
         });
         Route::apiResource('departments', DepartmentController::class);
 

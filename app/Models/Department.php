@@ -15,12 +15,14 @@ class Department extends Model
         'identifier',
         'owner_type',
         'owner_id',
-        'appended_from_lab_id',
+        'status',
     ];
 
     protected $casts = [
         'owner_id'  => 'integer',
         'parent_id' => 'integer',
+        'status'    => 'string',
+
     ];
 
     protected $appends = [
@@ -29,7 +31,7 @@ class Department extends Model
         'is_custom',
     ];
 
-        // 🔗 Lab override → Master department
+    // 🔗 Lab override → Master department
     public function parent()
     {
         return $this->belongsTo(Department::class, 'parent_id');
@@ -40,6 +42,25 @@ class Department extends Model
     {
         return $this->hasMany(Department::class, 'parent_id');
     }
+    public function lab()
+    {
+        return $this->hasOneThrough(
+            Lab::class,      // Final Model
+            Department::class, // Intermediate (Lab Department)
+
+            'id',            // Intermediate PK (departments.id)
+            'id',            // Final PK (labs.id)
+
+            'parent_id',     // FK on SuperAdmin Department
+            'owner_id'       // FK on Lab Department
+        )->where('departments.owner_type', 'lab')  // 🔥 VERY IMPORTANT
+            ->select('labs.id', 'labs.name');
+    }
+    public function appendedMaster()
+    {
+        return $this->hasOne(Department::class, 'parent_id')
+            ->where('owner_type', 'super_admin');
+    }
 
     public function scopeSuperAdmin($query)
     {
@@ -49,7 +70,7 @@ class Department extends Model
     public function scopeForLab($query, int $labId)
     {
         return $query->where('owner_type', 'lab')
-                     ->where('owner_id', $labId);
+            ->where('owner_id', $labId);
     }
 
     public function getIsMasterAttribute(): bool
@@ -77,21 +98,20 @@ class Department extends Model
     {
         return $query->where(function ($q) use ($labId) {
 
-            // 1️⃣ All lab categories (custom + overrides)
+            // 1️⃣ All lab departments (custom + overrides)
             $q->where(function ($lab) use ($labId) {
                 $lab->where('owner_type', 'lab')
                     ->where('owner_id', $labId);
             })
 
-            // 2️⃣ Master categories NOT overridden by this lab
-            ->orWhere(function ($master) use ($labId) {
-                $master->where('owner_type', 'super_admin')
-                    ->whereDoesntHave('overrides', function ($override) use ($labId) {
-                        $override->where('owner_type', 'lab')
+                // 2️⃣ Master departments NOT overridden by this lab
+                ->orWhere(function ($master) use ($labId) {
+                    $master->where('owner_type', 'super_admin')
+                        ->whereDoesntHave('overrides', function ($override) use ($labId) {
+                            $override->where('owner_type', 'lab')
                                 ->where('owner_id', $labId);
-                    });
-            });
-
+                        });
+                });
         });
     }
 }
