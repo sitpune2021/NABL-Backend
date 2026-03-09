@@ -22,10 +22,10 @@ class UnitController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Unit::query();
+            $query = Unit::query()->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
-                $query->SuperAdmin();
+                $query->with('lab')->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
             }
@@ -113,6 +113,8 @@ class UnitController extends Controller
                 'name'       => $request->name,
                 'owner_type' => $ctx['owner_type'],
                 'owner_id'   => $ctx['owner_id'],
+                'status'     => 'completed',
+
             ]);
             DB::commit();
 
@@ -246,32 +248,51 @@ class UnitController extends Controller
             ], 500);
         }
     }
-    
-    public function labMasterUnits(Request $request)
-    {
-        $labId = $request->query('lab_id');
 
-        if (!$labId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'lab_id is required'
-            ], 422);
-        }
+   public function labMasterUnits(Request $request)
+{
+    $validated = $request->validate([
+        'id'  => ['required', 'integer', 'exists:labs,id'],
+        'start_date' => ['nullable', 'date'],
+        'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+        'key' => ['nullable', 'string', 'in:all,master']
+    ]);
 
-        $units = Unit::where('owner_type', 'lab')
-            ->where('owner_id', $labId)
-            ->whereNull('parent_id')
-             ->whereDoesntHave('overrides', function ($q) {
-                $q->where('owner_type', 'super_admin');
-            })
-            ->orderBy('name')
-            ->get();
+    $labId = $validated['id'];
+    $key   = $validated['key'] ?? null;
 
-        return response()->json([
-            'success' => true,
-            'data' => $units
+    $query = Unit::query()
+        ->with('appendedMaster')
+        ->select([
+            'id',
+            'name',
+            'owner_id',
+            'owner_type',
+            'parent_id',
+            'created_at'
+        ])
+        ->where('owner_type', 'lab')
+        ->where('owner_id', $labId)
+        ->whereNull('parent_id');
+
+    if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+        $query->whereBetween('created_at', [
+            $validated['start_date'] . ' 00:00:00',
+            $validated['end_date'] . ' 23:59:59'
         ]);
     }
+
+    if ($key !== 'all') {
+        $query->whereDoesntHave('appendedMaster');
+    }
+
+    $units = $query->orderBy('name')->get();
+
+    return response()->json([
+        'success' => true,
+        'data'    => $units
+    ]);
+}
 
     public function appendLabUnitToMaster(Request $request)
     {
@@ -310,7 +331,8 @@ class UnitController extends Controller
                 'identifier'             => $labUnit->identifier,
                 'owner_type'             => 'super_admin',
                 'owner_id'               => null,
-                'appended_from_lab_id'   => $labUnit->owner_id,
+                'status'     => 'pending',
+
             ]);
 
             DB::commit();
@@ -326,5 +348,31 @@ class UnitController extends Controller
                 'message' => 'Failed to append unit',
             ], 500);
         }
+    }
+    public function pendingUnits()
+    {
+        $units =Unit::with('lab')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $units
+        ]);
+    }
+    public function approveUnits(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:units,id']
+        ]);
+
+       Unit::whereIn('id', $validated['ids'])
+            ->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true,
+        ]);
     }
 }

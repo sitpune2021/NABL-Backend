@@ -137,6 +137,8 @@ Route::prefix('v1')->group(function () {
         Route::prefix('units')->group(function () {
             Route::get('lab-master', [UnitController::class, 'labMasterUnits']);
             Route::post('append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
+            Route::post('/approve', [UnitController::class, 'approveUnits']);
+            Route::get('/pending', [UnitController::class, 'pendingUnits']);
         });
         Route::apiResource('units', UnitController::class);
 
