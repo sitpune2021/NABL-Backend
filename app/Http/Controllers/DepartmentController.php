@@ -22,10 +22,10 @@ class DepartmentController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Department::query();
+            $query = Department::query()->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
-                $query->SuperAdmin();
+                 $query->with('lab')->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
             }
@@ -123,6 +123,7 @@ class DepartmentController extends Controller
                 'identifier' => $request->identifier,
                 'owner_type' => $ctx['owner_type'],
                 'owner_id'   => $ctx['owner_id'],
+                'status'     => 'completed',
             ]);
             DB::commit();
 
@@ -265,22 +266,44 @@ class DepartmentController extends Controller
     }
 
     public function labMasterDepartments(Request $request)
-    {
-        $labId = $request->query('lab_id');
+            {
+            $validated = $request->validate([
+                'id'  => ['required', 'integer', 'exists:labs,id'],
+                'start_date' => ['nullable', 'date'],
+                'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+                'key' => ['nullable', 'string', 'in:all,master']
+            ]);
 
-        if (!$labId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'lab_id is required'
-            ], 422);
-        }
+            $labId = $validated['id'];
+            $key   = $validated['key'] ?? null;
 
-        $departments = Department::where('owner_type', 'lab')
-            ->where('owner_id', $labId)
-            ->whereNull('parent_id')
-             ->whereDoesntHave('overrides', function ($q) {
-                $q->where('owner_type', 'super_admin');
-            })
+            $query = Department::query()
+                ->with('appendedMaster')
+                ->select([
+                    'id',
+                    'name',
+                    'identifier',
+                    'owner_id',
+                    'owner_type',
+                    'parent_id',
+                    'created_at'
+                ])
+                ->where('owner_type', 'lab')
+                ->where('owner_id', $labId)
+                ->whereNull('parent_id');
+
+            if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+                $query->whereBetween('created_at', [
+                    $validated['start_date'] . ' 00:00:00',
+                    $validated['end_date'] . ' 23:59:59'
+                ]);
+            }
+
+            if ($key !== 'all') {
+                $query->whereDoesntHave('appendedMaster');
+            }
+
+            $departments = $query
             ->orderBy('name')
             ->get();
 
@@ -327,7 +350,7 @@ class DepartmentController extends Controller
                 'identifier'             => $labDepartment->identifier,
                 'owner_type'             => 'super_admin',
                 'owner_id'               => null,
-                'appended_from_lab_id'   => $labDepartment->owner_id,
+                'status'   => 'pending',
             ]);
 
             DB::commit();
@@ -343,5 +366,31 @@ class DepartmentController extends Controller
                 'message' => 'Failed to append department',
             ], 500);
         }
+    }
+    public function pendingDepartments()
+    {
+        $departments = Department::with('lab')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $departments
+        ]);
+    }
+    public function approveDepartments(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:departments,id']
+        ]);
+
+        Department::whereIn('id', $validated['ids'])
+            ->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true,
+        ]);
     }
 }

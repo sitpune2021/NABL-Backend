@@ -22,7 +22,7 @@ class CategoryController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Category::query();
+            $query = Category::query()->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
                 $query->with('lab')->SuperAdmin();
@@ -121,6 +121,7 @@ class CategoryController extends Controller
                 'identifier' => $request->identifier,
                 'owner_type' => $ctx['owner_type'],
                 'owner_id'   => $ctx['owner_id'],
+                'status'     => 'completed',
             ]);
 
             DB::commit();
@@ -264,13 +265,15 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'id'  => ['required', 'integer', 'exists:labs,id'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'key' => ['nullable', 'string', 'in:all,master']
         ]);
 
         $labId = $validated['id'];
         $key   = $validated['key'] ?? null;
 
-        $categories = Category::query()
+        $query = Category::query()
             ->with('appendedMaster')
             ->select([
                 'id',
@@ -278,15 +281,25 @@ class CategoryController extends Controller
                 'identifier',
                 'owner_id',
                 'owner_type',
-                'parent_id'
+                'parent_id',
+                'created_at'
             ])
             ->where('owner_type', 'lab')
             ->where('owner_id', $labId)
-            ->whereNull('parent_id')
-            ->when($key !== 'all', function ($query) {
+            ->whereNull('parent_id');
+
+        if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+            $query->whereBetween('created_at', [
+                $validated['start_date'] . ' 00:00:00',
+                $validated['end_date'] . ' 23:59:59'
+            ]);
+        }
+
+            if ($key !== 'all') {
                 $query->whereDoesntHave('appendedMaster');
-            })
-            ->orderBy('name')
+            }
+
+        $categories = $query->orderBy('name')
             ->get();
 
         return response()->json([
@@ -328,6 +341,7 @@ class CategoryController extends Controller
                 'identifier' => $labCategory->identifier,
                 'owner_type' => 'super_admin',
                 'owner_id'   => null,
+                'status'     => 'pending',
             ]);
 
             DB::commit();
@@ -423,5 +437,31 @@ class CategoryController extends Controller
                 'message' => 'Failed to append category',
             ], 500);
         }
+    }
+    public function pendingCategories()
+    {
+        $categories = Category::with('lab')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $categories
+        ]);
+    }
+    public function approveCategories(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:categories,id']
+        ]);
+
+        Category::whereIn('id', $validated['ids'])
+            ->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true,
+        ]);
     }
 }

@@ -113,24 +113,32 @@ Route::prefix('v1')->group(function () {
             Route::get('lab-all', [CategoryController::class, 'labAllCategories']);
             Route::post('append-to-master', [CategoryController::class, 'appendLabCategoryToMaster']);
             Route::post('append-to-lab', [CategoryController::class, 'appendMasterCategoryToLab']);
+            Route::post('/approve', [CategoryController::class, 'approveCategories']);
+            Route::get('/pending', [CategoryController::class, 'pendingCategories']);
         });
         Route::apiResource('categories', CategoryController::class);
 
         Route::prefix('sub-categories')->group(function () {
             Route::get('sync-master', [SubCategoryController::class, 'labMasterSubCategories']);
             Route::post('append-to-master', [SubCategoryController::class, 'appendLabSubCategoryToMaster']);
+            Route::get('/pending',[SubCategoryController::class,'pending']);
+            Route::post('/approve',[SubCategoryController::class,'approve']);
         });
         Route::apiResource('sub-categories', SubCategoryController::class);
 
         Route::prefix('departments')->group(function () {
             Route::get('lab-master', [DepartmentController::class, 'labMasterDepartments']);
             Route::post('append-to-master', [DepartmentController::class, 'appendLabDepartmentToMaster']);
+            Route::post('/approve', [DepartmentController::class, 'approveDepartments']);
+            Route::get('/pending', [DepartmentController::class, 'pendingDepartments']);
         });
         Route::apiResource('departments', DepartmentController::class);
 
         Route::prefix('units')->group(function () {
             Route::get('lab-master', [UnitController::class, 'labMasterUnits']);
             Route::post('append-to-master', [UnitController::class, 'appendLabUnitToMaster']);
+            Route::post('/approve', [UnitController::class, 'approveUnits']);
+            Route::get('/pending', [UnitController::class, 'pendingUnits']);
         });
         Route::apiResource('units', UnitController::class);
 
@@ -154,9 +162,33 @@ Route::prefix('v1')->group(function () {
         | Infrastructure
         |--------------------------------------------------------------------------
         */
+        Route::prefix('zones')->group(function () {
+
+            Route::get('sync-master', [ZoneController::class, 'labMasterZones']);
+            Route::post('append-to-master', [ZoneController::class, 'appendLabZoneToMaster']);
+            Route::get('pending', [ZoneController::class, 'pendingZones']);
+            Route::post('approve', [ZoneController::class, 'approveZones']);
+        });
         Route::apiResource('zones', ZoneController::class);
+
+        Route::prefix('clusters')->group(function () {
+
+            Route::get('sync-master', [ClusterController::class, 'labMasterClusters']);
+            Route::post('append-to-master', [ClusterController::class, 'appendLabClusterToMaster']);
+            Route::get('pending', [ClusterController::class, 'pendingClusters']);
+            Route::post('approve', [ClusterController::class, 'approveClusters']);
+        });
         Route::apiResource('clusters', ClusterController::class);
+
+        Route::prefix('locations')->group(function () {
+
+            Route::get('sync-master', [LocationController::class, 'labMasterLocations']);
+            Route::post('append-to-master', [LocationController::class, 'appendLabLocationToMaster']);
+            Route::get('pending', [LocationController::class, 'pendingLocations']);
+            Route::post('approve', [LocationController::class, 'approveLocations']);
+        });
         Route::apiResource('locations', LocationController::class);
+
         Route::apiResource('labs', LabController::class);
 
         // Route::prefix('labs')->group(function () {
@@ -178,6 +210,12 @@ Route::prefix('v1')->group(function () {
         | Instruments
         |--------------------------------------------------------------------------
         */
+        Route::prefix('instruments')->group(function () {
+            Route::get('sync-master', [InstrumentController::class, 'labMasterInstruments']);
+            Route::post('append-to-master', [InstrumentController::class, 'appendLabInstrumentToMaster']);
+            Route::post('/approve', [InstrumentController::class, 'approveInstruments']);
+            Route::get('/pending', [InstrumentController::class, 'pendingInstruments']);
+        });
         Route::apiResource('instruments', InstrumentController::class);
     });
 });

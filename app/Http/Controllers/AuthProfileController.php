@@ -44,7 +44,7 @@ class AuthProfileController extends Controller
             ]
         ]);
     }
-    
+
     public function show()
     {
         $user = User::with([
@@ -105,7 +105,6 @@ class AuthProfileController extends Controller
 
         $validator = Validator::make($request->all(), [
             'name'     => 'required|string|max:255',
-            'username' => 'required|string|unique:users,username,' . $user->id,
             'email'    => 'required|email|unique:users,email,' . $user->id,
             'phone'    => 'nullable|string',
             'dialCode' => 'nullable|string',
@@ -120,10 +119,6 @@ class AuthProfileController extends Controller
             // 1. Basic Info Update
             $user->update([
                 'name'      => $request->name,
-                'username'  => $request->username,
-                'email'     => $request->email,
-                'phone'     => $request->phone,
-                'dial_code' => $request->dialCode,
                 'address'   => $request->address,
                 'signature' => $request->signature,
             ]);

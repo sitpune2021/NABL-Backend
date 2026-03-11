@@ -4,10 +4,12 @@ namespace App\Http\Controllers;
 
 use Exception;
 use App\Models\Location;
+use App\Models\Cluster;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\Rule;
 
 class LocationController extends Controller
 {
@@ -17,7 +19,15 @@ class LocationController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Location::with('cluster', 'cluster.zone'); // Eager load cluster
+            $ctx = $this->labContext($request);
+            $query = Location::with(['cluster', 'cluster.zone'])
+                ->where('status', 'completed');
+
+            if ($ctx['lab_id'] == 0) {
+                $query->with('lab')->SuperAdmin();
+            } else {
+                $query->ForLab($ctx['lab_id']);
+            }
 
             // Search
             if ($request->filled('query')) {
@@ -32,7 +42,7 @@ class LocationController extends Controller
                         })
                         ->orWhereHas('cluster.zone', function ($q3) use ($search) {
                             $q3->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"]);
-                        }); 
+                        });
                 });
             }
 
@@ -71,13 +81,13 @@ class LocationController extends Controller
             $locations = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             return response()->json([
-                'status' => true,
+                'success' => true,
                 'data' => $locations->items(),
                 'total' => $locations->total()
             ], 200);
         } catch (Exception $e) {
             return response()->json([
-                'status' => false,
+                'success' => false,
                 'message' => 'Failed to fetch locations',
                 'error' => $e->getMessage()
             ], 500);
@@ -90,11 +100,21 @@ class LocationController extends Controller
      */
     public function store(Request $request)
     {
+        $ctx = $this->labContext($request);
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:locations,name',
-            'identifier' => 'required|string|max:255|unique:locations,identifier',
-            'short_name' => 'required|string|max:255|unique:locations,short_name',
-            'cluster_id' => 'required|exists:clusters,id',
+            'cluster_id' => ['required', 'exists:clusters,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'identifier' => [
+                'required',
+                Rule::unique('locations')->where(
+                    fn($q) =>
+                    $q->where('cluster_id', $request->cluster_id)
+                        ->where('owner_type', $ctx['owner_type'])
+                        ->where('owner_id', $ctx['owner_id'])
+                        ->whereNull('deleted_at')
+                )
+            ],
+            'short_name' => ['required', 'string', 'max:255']
         ]);
 
         if ($validator->fails()) {
@@ -106,19 +126,26 @@ class LocationController extends Controller
 
         DB::beginTransaction();
         try {
-            $cluster = Location::create($request->only(['cluster_id', 'name', 'identifier', 'short_name']));
+            $location = Location::create([
+                'cluster_id' => $request->cluster_id,
+                'name' => $request->name,
+                'identifier' => $request->identifier,
+                'short_name' => $request->short_name,
+                'owner_type' => $ctx['owner_type'],
+                'owner_id' => $ctx['owner_id'],
+                'status' => 'completed'
+            ]);
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $cluster
+                'data' => $location
             ], 201);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create cluster',
-                'error' => $e->getMessage()
+                'message' => 'Failed to create location'
             ], 500);
         }
     }
@@ -129,26 +156,19 @@ class LocationController extends Controller
     public function show(string $id)
     {
         try {
-            $cluster = Location::with(['cluster', 'cluster.zone'])->findOrFail($id);
-            $formattedCluster = [
-                ...$cluster->toArray(),
-                'zone_id'    => $cluster->cluster->zone->id ?? null,
-            ];
+            $ctx = $this->labContext(request());
+            $location = Location::with(['cluster', 'cluster.zone'])
+                ->accessible($ctx['lab_id'])
+                ->findOrFail($id);
             return response()->json([
                 'success' => true,
-                'data' => $formattedCluster
+                'data' => $location
             ], 200);
         } catch (ModelNotFoundException $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Location not found'
             ], 404);
-        } catch (Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch cluster',
-                'error' => $e->getMessage()
-            ], 500);
         }
     }
 
@@ -157,11 +177,15 @@ class LocationController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $location = Location::findOrFail($id);
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:locations,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:locations,identifier,' . $id,
-            'short_name' => 'required|string|max:255|unique:locations,short_name,' . $id,
-            'cluster_id' => 'sometimes|required|exists:clusters,id',
+            'cluster_id' => ['sometimes', 'exists:clusters,id'],
+            'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'identifier' => [
+                'sometimes',
+                Rule::unique('locations')->ignore($id)
+            ],
+            'short_name' => ['sometimes', 'required']
         ]);
 
         if ($validator->fails()) {
@@ -173,26 +197,18 @@ class LocationController extends Controller
 
         DB::beginTransaction();
         try {
-            $cluster = Location::findOrFail($id);
-            $cluster->update($request->only(['cluster_id', 'name', 'identifier', 'short_name']));
+            $location->update(
+            $request->only(['cluster_id', 'name', 'identifier', 'short_name']));
             DB::commit();
 
             return response()->json([
                 'success' => true,
-                'data' => $cluster
-            ], 200);
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Location not found'
-            ], 404);
+                'data' => $location
+            ]);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to update cluster',
-                'error' => $e->getMessage()
+                'success' => false
             ], 500);
         }
     }
@@ -204,27 +220,146 @@ class LocationController extends Controller
     {
         DB::beginTransaction();
         try {
-            $cluster = Location::findOrFail($id);
-            $cluster->delete();
+            Location::findOrFail($id)->delete();
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'message' => 'Location deleted successfully'
             ], 200);
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Location not found'
-            ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
-                'success' => false,
-                'message' => 'Failed to delete cluster',
-                'error' => $e->getMessage()
+                'success' => false
             ], 500);
         }
+    }
+    /**
+     * Lab Locations for append
+     */
+    public function labMasterLocations(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => ['required', 'integer', 'exists:labs,id'],
+            'clusterId' => ['required', 'integer', 'exists:clusters,id'],
+        ]);
+
+        $locations = Location::query()
+            ->with('appendedMaster')
+            ->select([
+                'id',
+                'name',
+                'identifier',
+                'cluster_id',
+                'owner_id',
+                'owner_type',
+                'parent_id',
+                'created_at'
+            ])
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $validated['id'])
+            ->where('cluster_id', $validated['clusterId'])
+            ->whereNull('parent_id')
+            ->whereDoesntHave('appendedMaster')
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $locations
+        ]);
+    }
+
+    /**
+     * Append to master
+     */
+    public function appendLabLocationToMaster(Request $request)
+    {
+        $validated = $request->validate([
+            'lab_location_id' => ['required', 'exists:locations,id']
+        ]);
+
+        $labLocation = Location::where('id', $validated['lab_location_id'])
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $labCluster = Cluster::where('id', $labLocation->cluster_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $masterCluster = Cluster::where('owner_type', 'super_admin')
+            ->where('parent_id', $labCluster->id)
+            ->first();
+
+        if (!$masterCluster) {
+
+            return response()->json([
+                'success' => false,
+                    'needs_cluster_append' => true
+                ], 409);
+        }
+
+        DB::beginTransaction();
+
+        try {
+
+            $masterLocation = Location::create([
+                'name' => $labLocation->name,
+                'identifier' => $labLocation->identifier,
+                'short_name' => $labLocation->short_name,
+                'cluster_id' => $masterCluster->id,
+                'parent_id' => $labLocation->id,
+                'owner_type' => 'super_admin',
+                'owner_id' => $labLocation->owner_id,
+                'status' => 'pending'
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $masterLocation
+            ]);
+        } catch (Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false
+            ], 500);
+        }
+    }
+    /**
+     * Pending
+     */
+    public function pending()
+    {
+        $locations = Location::with(['cluster', 'cluster.zone', 'lab'])
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $locations
+        ]);
+    }
+
+    /**
+     * Approve
+     */
+    public function approve(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:locations,id']
+        ]);
+
+        Location::whereIn('id', $validated['ids'])
+            ->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true
+        ]);
     }
 }
