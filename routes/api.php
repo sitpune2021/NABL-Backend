@@ -162,9 +162,33 @@ Route::prefix('v1')->group(function () {
         | Infrastructure
         |--------------------------------------------------------------------------
         */
+        Route::prefix('zones')->group(function () {
+
+            Route::get('sync-master', [ZoneController::class, 'labMasterZones']);
+            Route::post('append-to-master', [ZoneController::class, 'appendLabZoneToMaster']);
+            Route::get('pending', [ZoneController::class, 'pendingZones']);
+            Route::post('approve', [ZoneController::class, 'approveZones']);
+        });
         Route::apiResource('zones', ZoneController::class);
+
+        Route::prefix('clusters')->group(function () {
+
+            Route::get('sync-master', [ClusterController::class, 'labMasterClusters']);
+            Route::post('append-to-master', [ClusterController::class, 'appendLabClusterToMaster']);
+            Route::get('pending', [ClusterController::class, 'pendingClusters']);
+            Route::post('approve', [ClusterController::class, 'approveClusters']);
+        });
         Route::apiResource('clusters', ClusterController::class);
+
+        Route::prefix('locations')->group(function () {
+
+            Route::get('sync-master', [LocationController::class, 'labMasterLocations']);
+            Route::post('append-to-master', [LocationController::class, 'appendLabLocationToMaster']);
+            Route::get('pending', [LocationController::class, 'pendingLocations']);
+            Route::post('approve', [LocationController::class, 'approveLocations']);
+        });
         Route::apiResource('locations', LocationController::class);
+
         Route::apiResource('labs', LabController::class);
 
         // Route::prefix('labs')->group(function () {
@@ -186,6 +210,12 @@ Route::prefix('v1')->group(function () {
         | Instruments
         |--------------------------------------------------------------------------
         */
+        Route::prefix('instruments')->group(function () {
+            Route::get('sync-master', [InstrumentController::class, 'labMasterInstruments']);
+            Route::post('append-to-master', [InstrumentController::class, 'appendLabInstrumentToMaster']);
+            Route::post('/approve', [InstrumentController::class, 'approveInstruments']);
+            Route::get('/pending', [InstrumentController::class, 'pendingInstruments']);
+        });
         Route::apiResource('instruments', InstrumentController::class);
     });
 });

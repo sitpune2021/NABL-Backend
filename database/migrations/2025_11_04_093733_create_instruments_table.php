@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -18,7 +19,7 @@ return new class extends Migration
             $table->string('short_name');
             $table->string('manufacturer');
             $table->string('serial_no');
-            $table->string('identifier'); 
+            $table->string('identifier');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
             $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
