@@ -605,8 +605,10 @@ class DocumentController extends Controller
             }
 
             $values = collect($headers)->map(function ($key) use ($fields) {
-                $value = $fields[$key] ?? null;
-                if ($key === 'document' && $value) {
+                $keyword = str_replace(' ', '_', $key);
+
+                $value = $fields[$keyword] ?? null;
+                if ($keyword === 'document' && $value) {
                     $value = Storage::disk('public')->url('documents/' . $value);
                 }
 

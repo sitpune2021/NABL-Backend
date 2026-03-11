@@ -28,8 +28,11 @@ class AuthController extends Controller
         }
 
         $user = auth()->user();
+        $isLabUser = LabUser::where('user_id', $user->id)->exists();
+
         $user->makeHidden(['password', 'remember_token', 'dial_code', 'phone', 'address', 'email_verified_at', 'created_at', 'updated_at']);
-        
+        $user->role_type = $isLabUser ? 'lab' : 'one_step';
+
         return $this->success([
             'user'    => $user,
             'token'   => $token
