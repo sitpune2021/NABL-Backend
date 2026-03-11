@@ -14,12 +14,13 @@ class Unit extends Model
         'name',
         'owner_type',
         'owner_id',
-        'appended_from_lab_id',
+        'status'
     ];
 
     protected $casts = [
         'owner_id'  => 'integer',
         'parent_id' => 'integer',
+        'status'    => 'string',
     ];
 
     protected $appends = [
@@ -38,6 +39,25 @@ class Unit extends Model
     public function overrides()
     {
         return $this->hasMany(Unit::class, 'parent_id');
+    }
+    public function lab()
+    {
+        return $this->hasOneThrough(
+            Lab::class,      // Final Model
+            Unit::class, // Intermediate (Lab Unit)
+
+            'id',            // Intermediate PK (units.id)
+            'id',            // Final PK (labs.id)
+
+            'parent_id',     // FK on SuperAdmin Unit
+            'owner_id'       // FK on Lab Unit
+        )->where('units.owner_type', 'lab')  // 🔥 VERY IMPORTANT
+        ->select('labs.id', 'labs.name');
+    }
+    public function appendedMaster()
+    {
+        return $this->hasOne(Unit::class, 'parent_id')
+            ->where('owner_type', 'super_admin');
     }
 
     public function scopeSuperAdmin($query)
@@ -76,13 +96,13 @@ class Unit extends Model
     {
         return $query->where(function ($q) use ($labId) {
 
-            // 1️⃣ All lab categories (custom + overrides)
+            // 1️⃣ All lab units (custom + overrides)
             $q->where(function ($lab) use ($labId) {
                 $lab->where('owner_type', 'lab')
                     ->where('owner_id', $labId);
             })
 
-            // 2️⃣ Master categories NOT overridden by this lab
+            // 2️⃣ Master units NOT overridden by this lab
             ->orWhere(function ($master) use ($labId) {
                 $master->where('owner_type', 'super_admin')
                     ->whereDoesntHave('overrides', function ($override) use ($labId) {

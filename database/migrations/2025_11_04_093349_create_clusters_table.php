@@ -17,7 +17,7 @@ return new class extends Migration
             $table->foreignId('parent_id')->nullable()->constrained('clusters')->nullOnDelete()->comment('master clusters id if this is a lab override');
 
             $table->string('name');
-            $table->string('identifier'); 
+            $table->string('identifier');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
             $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');

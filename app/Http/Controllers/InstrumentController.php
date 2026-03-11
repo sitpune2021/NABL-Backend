@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use Exception;
-use App\Models\Instrument;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Models\{LabUser, Instrument};
 
 class InstrumentController extends Controller
 {
@@ -17,9 +18,14 @@ class InstrumentController extends Controller
     public function index(Request $request)
     {
         try {
-            $query = Instrument::query();
+            $ctx = $this->labContext($request);
+            $query = Instrument::query()->where('status', 'completed');
 
-            // Search
+            if ($ctx['lab_id'] == 0) {
+                $query->with('lab')->SuperAdmin();
+            } else {
+                $query->ForLab($ctx['lab_id']);
+            }
             if ($request->filled('query')) {
                 $search = strtolower($request->input('query'));
                 $query->where(function ($q) use ($search) {
@@ -69,12 +75,43 @@ class InstrumentController extends Controller
      */
     public function store(Request $request)
     {
+        $ctx = $this->labContext($request);
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255|unique:instruments,name',
-            'identifier' => 'required|string|max:255|unique:instruments,identifier',
-            'short_name' => 'sometimes|required|string|max:255|unique:instruments,short_name',
-            'serial_no' => 'required|string|max:255',
-            'manufacturer' => 'required|string|max:255',
+            'name' => ['required'],
+            'identifier' => ['required'],
+            'short_name' => ['required'],
+            'serial_no' => ['required'],
+            'manufacturer' => ['required'],
+
+            'parent_id' => [
+                'nullable',
+                'exists:instruments,id',
+                fn($attr, $value, $fail) =>
+                $value && $ctx['owner_type'] !== 'lab'
+                    ? $fail('Only lab users can override master instruments')
+                    : null
+            ],
+
+            'name' => [
+                'required',
+                Rule::unique('instruments')->where(
+                    fn($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                        ->where('owner_id', $ctx['owner_id'])
+                        ->whereNull('deleted_at')
+                ),
+            ],
+
+            'identifier' => [
+                'required',
+                Rule::unique('instruments')->where(
+                    fn($q) =>
+                    $q->where('owner_type', $ctx['owner_type'])
+                        ->where('owner_id', $ctx['owner_id'])
+                        ->whereNull('deleted_at')
+                ),
+            ],
+
         ]);
 
         if ($validator->fails()) {
@@ -86,7 +123,17 @@ class InstrumentController extends Controller
 
         DB::beginTransaction();
         try {
-            $instrument = Instrument::create($request->only(['name','short_name','serial_no','manufacturer', 'identifier']));
+            $instrument = Instrument::create([
+                'parent_id' => $request->parent_id,
+                'name' => $request->name,
+                'identifier' => $request->identifier,
+                'short_name' => $request->short_name,
+                'serial_no' => $request->serial_no,
+                'manufacturer' => $request->manufacturer,
+                'owner_type' => $ctx['owner_type'],
+                'owner_id' => $ctx['owner_id'],
+                'status' => 'completed',
+            ]);
             DB::commit();
 
             return response()->json([
@@ -110,7 +157,8 @@ class InstrumentController extends Controller
     public function show(string $id)
     {
         try {
-            $instrument = Instrument::findOrFail($id);
+            $ctx = $this->labContext(request());
+            $instrument = Instrument::accessible($ctx['lab_id'])->findOrFail($id);
             return response()->json([
                 'success' => true,
                 'data' => $instrument
@@ -134,12 +182,29 @@ class InstrumentController extends Controller
      */
     public function update(Request $request, string $id)
     {
+        $instrument = Instrument::findOrFail($id);
         $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255|unique:instruments,name,' . $id,
-            'identifier' => 'sometimes|required|string|max:255|unique:instruments,identifier,' . $id,
-            'short_name' => 'sometimes|required|string|max:255|unique:instruments,short_name,' . $id,
-            'serial_no' => 'required|string|max:255' . $id,
-            'manufacturer' => 'required|string|max:255' . $id,
+
+            'name' => [
+                'sometimes',
+                Rule::unique('instruments')->ignore($id)->where(
+                    fn($q) =>
+                    $q->where('owner_type', $instrument->owner_type)
+                        ->where('owner_id', $instrument->owner_id)
+                        ->whereNull('deleted_at')
+                ),
+            ],
+
+            'identifier' => [
+                'sometimes',
+                Rule::unique('instruments')->ignore($id)->where(
+                    fn($q) =>
+                    $q->where('owner_type', $instrument->owner_type)
+                        ->where('owner_id', $instrument->owner_id)
+                        ->whereNull('deleted_at')
+                ),
+            ],
+
         ]);
 
         if ($validator->fails()) {
@@ -151,21 +216,20 @@ class InstrumentController extends Controller
 
         DB::beginTransaction();
         try {
-            $instrument = Instrument::findOrFail($id);
-            $instrument->update($request->only(['name','short_name', 'serial_no','manufacturer', 'identifier']));
+
+            $instrument->update($request->only([
+                'name',
+                'identifier',
+                'short_name',
+                'serial_no',
+                'manufacturer'
+            ]));
             DB::commit();
 
             return response()->json([
                 'success' => true,
                 'data' => $instrument
             ], 200);
-
-        } catch (ModelNotFoundException $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'Instrument not found'
-            ], 404);
         } catch (Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -184,6 +248,13 @@ class InstrumentController extends Controller
         DB::beginTransaction();
         try {
             $instrument = Instrument::findOrFail($id);
+            if ($instrument->is_master) {
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Master instrument cannot be deleted',
+                ], 403);
+            }
             $instrument->delete();
             DB::commit();
 
@@ -191,7 +262,7 @@ class InstrumentController extends Controller
                 'success' => true,
                 'message' => 'Instrument deleted successfully'
             ], 200);
-            
+
         } catch (ModelNotFoundException $e) {
             DB::rollBack();
             return response()->json([
@@ -206,5 +277,153 @@ class InstrumentController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+    /**
+     * Lab instruments for master sync
+     */
+    public function labMasterInstruments(Request $request)
+    {
+        $validated = $request->validate([
+            'id' => ['required', 'integer', 'exists:labs,id'],
+            'start_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'key' => ['nullable', 'string', 'in:all,master']
+        ]);
+
+        $labId = $validated['id'];
+        $key = $validated['key'] ?? null;
+
+        $query = Instrument::query()
+            ->with('appendedMaster')
+            ->select([
+                'id',
+                'name',
+                'identifier',
+                'owner_id',
+                'owner_type',
+                'parent_id',
+                'created_at'
+            ])
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $labId)
+            ->whereNull('parent_id');
+
+        if (!empty($validated['start_date']) && !empty($validated['end_date'])) {
+
+            $query->whereBetween('created_at', [
+                $validated['start_date'] . ' 00:00:00',
+                $validated['end_date'] . ' 23:59:59'
+            ]);
+        }
+
+        if ($key !== 'all') {
+            $query->whereDoesntHave('appendedMaster');
+        }
+
+        $instruments = $query
+            ->orderBy('name')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $instruments
+        ]);
+    }
+
+
+    /**
+     * Append lab instrument to master
+     */
+    public function appendLabInstrumentToMaster(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'lab_instrument_id' => ['required', 'exists:instruments,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $labInstrument = Instrument::where('id', $request->lab_instrument_id)
+            ->where('owner_type', 'lab')
+            ->whereNull('parent_id')
+            ->firstOrFail();
+
+        $alreadyExists = Instrument::where('owner_type', 'super_admin')
+            ->where('parent_id', $labInstrument->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Instrument already synced',
+            ], 409);
+        }
+
+        DB::beginTransaction();
+
+        try {
+
+            $masterInstrument = Instrument::create([
+                'parent_id' => $labInstrument->id,
+                'name' => $labInstrument->name,
+                'identifier' => $labInstrument->identifier,
+                'short_name' => $labInstrument->short_name,
+                'serial_no' => $labInstrument->serial_no,
+                'manufacturer' => $labInstrument->manufacturer,
+                'owner_type' => 'super_admin',
+                'owner_id' => null,
+                'status' => 'pending',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'data' => $masterInstrument,
+            ], 201);
+        } catch (Exception $e) {
+
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to append instrument',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+    public function pendingInstruments()
+    {
+        $instruments = Instrument::with('lab')
+            ->where('status', 'pending')
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $instruments
+        ]);
+    }
+
+
+    public function approveInstruments(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array'],
+            'ids.*' => ['exists:instruments,id']
+        ]);
+
+        Instrument::whereIn('id', $validated['ids'])
+            ->update(['status' => 'completed']);
+
+        return response()->json([
+            'success' => true,
+        ]);
     }
 }
