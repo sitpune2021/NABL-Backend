@@ -63,4 +63,9 @@ class Document extends Model
         });
     }
 
+    public function labVersion()
+    {
+        return $this->hasOne(Document::class, 'parent_id')
+            ->where('owner_type', 'lab');
+    }
 }

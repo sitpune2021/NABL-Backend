@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('parent_id')->nullable()->constrained('units')->nullOnDelete()->comment('master units id if this is a lab override');
             $table->string('name');
+            $table->enum('status', ['pending', 'completed'])->default('completed');
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
             $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
             $table->timestamps();
