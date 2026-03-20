@@ -15,6 +15,7 @@ return new class extends Migration
 
             $table->string('name');
             $table->string('identifier');
+             $table->enum('status', ['pending', 'completed'])->default('completed');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
 

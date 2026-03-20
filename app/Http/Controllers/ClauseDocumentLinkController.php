@@ -23,8 +23,8 @@ class ClauseDocumentLinkController extends Controller
      * Store a newly created resource in storage.
      */
 
-   public function store(Request $request)
-   {
+    public function store(Request $request)
+    {
         $request->validate([
             'standard_id' => 'required|exists:standards,id',
             'standard_clauses' => 'required|array',
@@ -88,19 +88,76 @@ class ClauseDocumentLinkController extends Controller
         }
     }
 
-
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(string $id, Request $request)
     {
-        $standard = Standard::with([
-            'clauses.documents.currentVersion' ,// eager load clauses and related documents
-            'clauses.children'          // recursive children will load documents via children() relation
+        $ctx = $this->labContext($request);
 
-        ])->findOrFail($id);
+        $with = [
+            'clauses.children'
+        ];
+
+        // ✅ LAB CONTEXT
+        if ($ctx['owner_type'] === 'lab') {
+
+            $with['clauses.documents.labVersion'] = function ($q) use ($ctx) {
+                $q->where('owner_id', $ctx['owner_id']);
+            };
+
+            $with['clauses.documents.labVersion.currentVersion'] = function ($q) {
+                $q->where('is_current', true);
+            };
+
+            $with['clauses.children.documents.labVersion'] = function ($q) use ($ctx) {
+                $q->where('owner_id', $ctx['owner_id']);
+            };
+
+            $with['clauses.children.documents.labVersion.currentVersion'] = function ($q) {
+                $q->where('is_current', true);
+            };
+
+        } else {
+
+            // ✅ NORMAL (super_admin)
+            $with[] = 'clauses.documents.currentVersion';
+            $with[] = 'clauses.children.documents.currentVersion';
+        }
+
+        $standard = Standard::with($with)->findOrFail($id);
+
+        // ✅ IMPORTANT: Replace documents with lab version
+        if ($ctx['owner_type'] === 'lab') {
+            $this->replaceWithLabDocuments($standard->clauses);
+        }
 
         return response()->json($standard);
+    }
+
+    private function replaceWithLabDocuments($clauses)
+    {
+        foreach ($clauses as $clause) {
+
+            $newDocs = [];
+
+            foreach ($clause->documents as $doc) {
+
+                if ($doc->labVersion) {
+                    $newDocs[] = $doc->labVersion; // ✅ only lab doc
+                } else {
+                    $newDocs[] = $doc; // fallback
+                }
+            }
+
+            // ✅ FORCE replace (important)
+            $clause->setRelation('documents', collect($newDocs));
+
+            // ✅ recursive children
+            if ($clause->children && $clause->children->count()) {
+                $this->replaceWithLabDocuments($clause->children);
+            }
+        }
     }
 
     /**
