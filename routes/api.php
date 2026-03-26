@@ -19,7 +19,8 @@ use App\Http\Controllers\{
     LabController,
     StandardController,
     ClauseDocumentLinkController,
-    AuthProfileController
+    AuthProfileController,
+    CommentController
 };
 
 /*
@@ -217,5 +218,15 @@ Route::prefix('v1')->group(function () {
             Route::get('/pending', [InstrumentController::class, 'pendingInstruments']);
         });
         Route::apiResource('instruments', InstrumentController::class);
+        /*
+        |--------------------------------------------------------------------------
+        | Comments
+        |--------------------------------------------------------------------------
+        */
+
+        Route::prefix('comments')->group(function () {
+            Route::get('/{documentId}', [CommentController::class, 'index']);
+            Route::post('/', [CommentController::class, 'store']);
+        });
     });
 });
