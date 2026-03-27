@@ -9,7 +9,7 @@ class Lab extends Model
 {
      use SoftDeletes;
 
-    protected $fillable = ['name','lab_type','lab_code','address', 'loaction_count', 'user_count'];
+    protected $fillable = ['name','lab_type','lab_code', 'location_count', 'user_count'];
 
     public function contacts()
     {
@@ -28,7 +28,7 @@ class Lab extends Model
 
     public function location()
     {
-        return $this->hasMany(LabLocation::class);
+        return $this->hasMany(Location::class, 'owner_id');
     }
 
     public function users()

@@ -9,11 +9,15 @@ abstract class Controller
     protected function labContext(Request $request): array
     {
         $labId = (int) $request->header('X-Lab-Id', 0);
+        $locId = (int) $request->header('X-Loc-Id', 0);
+        $deptId = (int) $request->header('X-Dep-Id', 0);
 
         return [
             'lab_id'     => $labId,
             'owner_type' => $labId === 0 ? 'super_admin' : 'lab',
             'owner_id'   => $labId,
+            'location_id' => $locId,
+            'department_id' => $deptId,
         ];
     }
 

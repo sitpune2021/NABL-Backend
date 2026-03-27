@@ -9,11 +9,11 @@ class LabLocationDepartment extends Model
 {
      use SoftDeletes;
 
-    protected $fillable = ['lab_location_id', 'department_id'];
+    protected $fillable = ['location_id', 'department_id'];
 
     public function labLocation()
     {
-        return $this->belongsTo(LabLocation::class);
+        return $this->belongsTo(Location::class);
     }
 
     public function department()

@@ -27,6 +27,9 @@ class LocationController extends Controller
                 $query->with('lab')->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
+                if($ctx['location_id']){
+                    $query->where('id', $ctx['location_id']);
+                }
             }
 
             // Search
@@ -276,10 +279,10 @@ class LocationController extends Controller
     public function appendLabLocationToMaster(Request $request)
     {
         $validated = $request->validate([
-            'lab_location_id' => ['required', 'exists:locations,id']
+            'location_id' => ['required', 'exists:locations,id']
         ]);
 
-        $labLocation = Location::where('id', $validated['lab_location_id'])
+        $labLocation = Location::where('id', $validated['location_id'])
             ->where('owner_type', 'lab')
             ->whereNull('parent_id')
             ->firstOrFail();

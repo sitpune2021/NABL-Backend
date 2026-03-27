@@ -46,6 +46,7 @@ return [
     'masters.instrument.delete',
 
     'works.tasks.list',
+    'review.review.list',
 
     'settings.rolesPermission.list',
     'settings.rolesPermission.write',

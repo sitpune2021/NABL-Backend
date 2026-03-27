@@ -13,7 +13,7 @@ use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Str;
-use App\Models\{Lab, LabLocation, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole};
+use App\Models\{Lab, Location, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole};
 use Spatie\Permission\PermissionRegistrar;
 
 class UserController extends Controller
@@ -155,10 +155,13 @@ class UserController extends Controller
                 'address'   => $request->address,
                 'signature' => $request->signature,
                 'password'  => Hash::make('password123'), // default
+                'is_super_admin' => false,
             ]);
 
-                        $ctx = $this->labContext($request);
+            $ctx = $this->labContext($request);
 
+            app(PermissionRegistrar::class)->setPermissionsTeamId($ctx['owner_id']); // MASTER
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
 
             if($ctx['lab_id'] == 0) {
                 $Role = Role::where('id', $request->role)
@@ -175,7 +178,10 @@ class UserController extends Controller
                 foreach ($roleBlock['department'] as $deptBlock) {
                     foreach ($deptBlock['roles'] as $roleItem) {
                         $roleId = $roleItem['value'];
-                        $role = Role::find($roleId);
+                         $role = Role::where('id', $roleId)
+                                ->where('lab_id', $ctx['lab_id'])
+                                ->firstOrFail();
+
                         $user->assignRole($role);
                         $permissions = $role->permissions->pluck('name')->toArray();
                         $user->syncPermissions($permissions);
@@ -184,20 +190,19 @@ class UserController extends Controller
                             'user_id'       => $user->id,
                             'location_id'   => $roleBlock['location_id'],
                             'department_id' => $deptBlock['department_id'],
-                            'role_id'       => $roleId,
+                            'role_id'       => $role->id,
                             'status'        => 'active',
                             'position_type' => 'permanent',
                         ]);
-                        
+
                     }
                 }
             }
 
-            $authLab = LabUser::where('user_id', $authUser->id)->first();
-            if ($authLab) {
+            if ($ctx['lab_id'] != 0) {
                 LabUser::create([
                     'user_id' => $user->id,
-                    'lab_id'  => $authLab->lab_id,
+                    'lab_id'  => $ctx['lab_id'],
                 ]);
             }
 

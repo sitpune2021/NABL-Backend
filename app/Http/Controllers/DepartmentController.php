@@ -28,6 +28,9 @@ class DepartmentController extends Controller
                  $query->with('lab')->SuperAdmin();
             } else {
                 $query->ForLab($ctx['lab_id']);
+                if($ctx['department_id']){
+                    $query->where('id', $ctx['department_id']);
+                }
             }
 
             // Search

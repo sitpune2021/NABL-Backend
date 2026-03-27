@@ -115,7 +115,6 @@ class ZoneController extends Controller
         DB::beginTransaction();
         try {
             $zone = Zone::create([
-                'parent_id'  => $request->parent_id,
                 'name'       => $request->name,
                 'identifier' => $request->identifier,
                 'owner_type' => $ctx['owner_type'],

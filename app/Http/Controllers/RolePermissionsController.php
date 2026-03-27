@@ -54,7 +54,8 @@ class RolePermissionsController extends Controller
 
     public function levels()
     {
-        $levels = Role::select('level')->distinct()->orderBy('level')->pluck('level');
+        $ctx = $this->labContext(request());
+        $levels = Role::select('level')->where('lab_id', $ctx['lab_id'])->distinct()->orderBy('level')->pluck('level');
         return response()->json($levels);
     }
 

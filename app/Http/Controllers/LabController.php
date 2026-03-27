@@ -13,7 +13,7 @@ use Spatie\Permission\PermissionRegistrar;
 use App\Services\NavigationAccessService;
 
 use App\Models\{Lab, 
-    LabLocation, 
+    Location, 
     LabLocationDepartment, 
     LabUser, 
     Contact, 
@@ -32,7 +32,9 @@ use App\Models\{Lab,
     Department, 
     Unit,
     TemplateChangeHistory,
-    UserAssignment
+    UserAssignment, 
+    Zone,
+    Cluster,
     };
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -46,20 +48,22 @@ class LabController extends Controller
     {
         $authUser = auth()->user();
 
-        $labIds = LabUser::where('user_id', $authUser->id)->pluck('lab_id');
-
         $query = Lab::with([
             'contacts',
-            'location',
-            'location.contacts',
+            'location.contacts', // ✅ fixed plural
             'users'
         ]);
 
         // If user is a lab user → restrict labs
-        if ($labIds->isNotEmpty()) {
-            $query->whereIn('id', $labIds);
-        }
-
+        $query->when(
+            LabUser::where('user_id', $authUser->id)->exists(),
+            function ($q) use ($authUser) {
+                $q->whereHas('users', function ($sub) use ($authUser) {
+                    $sub->where('user_id', $authUser->id);
+                });
+            }
+        );
+                
         // Otherwise → show all labs
         $labs = $query->get();
 
@@ -83,8 +87,7 @@ class LabController extends Controller
                 'name' => $request->name,
                 'lab_type' => $request->lab_type,
                 'lab_code' => $request->lab_code,
-                'address' => $request->address ?? null,
-                'loaction_count' => $request->loaction_count,
+                'location_count' => $request->location_count,
                 'user_count' => $request->user_count
             ]);
             $modules = $service->getAccessModules(true, false);
@@ -116,35 +119,35 @@ class LabController extends Controller
             $mandatoryLevels = [1, 2];
 
             foreach ($mandatoryLevels as $level) {
-                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
-                    app(PermissionRegistrar::class)->forgetCachedPermissions();
+                app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-                    $role = Role::create([
-                        'name' => $level == 1 ? 'Super Admin' : 'Admin',
-                        'lab_id' => $lab->id,
-                        'level' => $level,
-                        'description' => $level == 1 
-                            ? 'Super Admin Role'
-                            : 'Admin Role'
-                    ]);
-                    
-                    $moduleMap = [];
-                    foreach ($modules as $module) {
-                        $moduleMap[$module['key']] = $module['key'];
-                    }
-
-                    $permissions = [];
-                    foreach ($modules as $moduleId => $module) {
-                        foreach ($module['accessor'] as $action) {
-                            $permissions[] = $module['key'] . '.' . $action['value'];
-                        }
-                    }
-
-                    $role->syncPermissions($permissions);
-
-                    app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
-                    app(PermissionRegistrar::class)->forgetCachedPermissions();
+                $role = Role::create([
+                    'name' => $level == 1 ? 'Super Admin' : 'Admin',
+                    'lab_id' => $lab->id,
+                    'level' => $level,
+                    'description' => $level == 1 
+                        ? 'Super Admin Role'
+                        : 'Admin Role'
+                ]);
+                
+                $moduleMap = [];
+                foreach ($modules as $module) {
+                    $moduleMap[$module['key']] = $module['key'];
                 }
+
+                $permissions = [];
+                foreach ($modules as $moduleId => $module) {
+                    foreach ($module['accessor'] as $action) {
+                        $permissions[] = $module['key'] . '.' . $action['value'];
+                    }
+                }
+
+                $role->syncPermissions($permissions);
+
+                app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
+            }
 
             $primaryEmail = collect($request->emails ?? [])->firstWhere('is_primary', true);
             $primaryPhone = collect($request->phones ?? [])->firstWhere('is_primary', true);
@@ -157,7 +160,6 @@ class LabController extends Controller
                         'username' => Str::lower(Str::random(10)),
                         'dial_code' => $primaryPhone['value'] ? '+91' : null,
                         'phone' => $primaryPhone['value'] ?? null,
-                        'address' => $request->address ?? null,
                         'password' => Hash::make('superadmin1234'),
                         'is_super_admin' => true,
                     ]
@@ -181,14 +183,9 @@ class LabController extends Controller
 
             // 3. Lab location
             foreach ($request->location ?? [] as $loc) {
-                $labLocation = LabLocation::create([
-                    'lab_id' => $lab->id,
-                    'location_id' => $loc['location_name'],
-                    'prefix' => $loc['prefix'],
-                    'shortName' => $loc['shortName'] ?? null,
-                    'address' => $loc['address'] ?? null,
-                ]);
-
+                $zone = $this->createIfNotExists(Zone::class, $loc['zone_id'], $lab, $loc);
+                $cluster = $this->createIfNotExists(Cluster::class, $loc['cluster_id'], $lab,$loc, ['zone_id' => $zone->id]);
+                $labLocation = $this->createIfNotExists(Location::class, $loc['location_id'], $lab, $loc,['cluster_id' => $cluster->id,'short_name' => $loc['shortName']]);
 
                 // Location Contacts
                 foreach ($loc['emails'] ?? [] as $email) {
@@ -219,7 +216,6 @@ class LabController extends Controller
                             'username' => 'labadminuser'.Str::random(4),
                             'dial_code' => $primaryPhone['value'] ? '+91' : null,
                             'phone' => $primaryPhone['value'] ?? '8888888888',
-                            'address' => $loc['address'] ?? null,
                             'password' => Hash::make('admin123'),
                             'is_super_admin' => false,
                         ]
@@ -278,7 +274,7 @@ class LabController extends Controller
                         
                         $this->assignULDR(
                             $admin->id,
-                            $loc['location_name'],
+                            $loc['location_id'],
                             $departmentOg->id,
                             $roleIds->id
                         );
@@ -292,7 +288,7 @@ class LabController extends Controller
                             ['owner_id', '=', $lab->id],
                         ])->first();
                     LabLocationDepartment::create([
-                        'lab_location_id' => $labLocation->id,
+                        'location_id' => $labLocation->id,
                         'department_id' => $departmentOg->id ?? null,
                     ]);
                 }
@@ -353,6 +349,58 @@ class LabController extends Controller
         }
     }
 
+    protected function createIfNotExists($model, $parentId, $lab, $loc, $extra = [])
+    {
+        $record = $model::where('parent_id', $parentId)
+            ->where('owner_type', 'lab')
+            ->where('owner_id', $lab->id)
+            ->first();
+
+        $parent = $model::findOrFail($parentId);
+
+        // ✅ ONLY for Location model → increment identifier
+        if ($model === Location::class && $record) {
+            $identifier = generateNextIdentifier($model, $parent->identifier);
+        } else {
+            $identifier = $parent->identifier;
+        }
+
+        // If already exists and NOT location → return existing
+        if ($record && $model !== Location::class) {
+            return $record;
+        }
+
+        return $model::create(array_merge([
+            'parent_id'  => $parent->id,
+            'name'       => $parent->name,
+            'identifier' => $identifier,
+            'owner_type' => 'lab',
+            'owner_id'   => $lab->id,
+            'status'     => 'completed',
+        ], $extra));
+    }
+
+    protected function generateNextIdentifier($model, $baseIdentifier)
+    {
+        $existing = $model::where('identifier', 'LIKE', $baseIdentifier . '%')
+            ->pluck('identifier')
+            ->toArray();
+
+        if (!in_array($baseIdentifier, $existing)) {
+            return $baseIdentifier;
+        }
+
+        $max = 0;
+
+        foreach ($existing as $id) {
+            if (preg_match('/-(\d+)$/', $id, $matches)) {
+                $num = (int) $matches[1];
+                $max = max($max, $num);
+            }
+        }
+
+        return $baseIdentifier . '-' . str_pad($max + 1, 2, '0', STR_PAD_LEFT);
+    }
 
     protected function cloneDocumentForLab(Document $original, Lab $lab, $user)
     {
@@ -513,8 +561,9 @@ class LabController extends Controller
                 'contacts',
                 'location.contacts',
                 'location.departments.department',
-                'location.locationRecord',
-                'location.locationRecord.cluster',
+                'location',
+                'location.cluster',
+                'location.cluster.zone',
                 'labClauseDocuments',
                 'users',
             ])->findOrFail($id);
@@ -534,8 +583,7 @@ class LabController extends Controller
                 'name'     => $lab->name,
                 'lab_type'  => $lab->lab_type,
                 'lab_code'  => $lab->lab_code,
-                'address'  => $lab->address,
-                'loaction_count' => $lab->loaction_count,
+                'location_count' => $lab->location_count,
                 'user_count' => $lab->user_count,
 
                 // Lab Emails
@@ -576,15 +624,12 @@ class LabController extends Controller
                     $primaryPhone = $location->contacts->where('type', 'phone')->firstWhere('is_primary', true);
 
                     return [
-                        'id'            => $location->id,
-                        'zone_name'     => $location->locationRecord->cluster->zone_id ?? null,
-                        'cluster_name'  => $location->locationRecord->cluster->id ?? null,
-                        'location_name' => $location->location_id,
-                        'location_name_og' => $location->locationRecord->name,
-
-                        'prefix'    => $location->prefix,
-                        'shortName' => $location->shortName,
-                        'address'   => $location->address,
+                        'zone_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->zone->parent_id : $location->cluster->zone->id,   
+                        'cluster_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->parent_id : $location->cluster->id,   
+                        'location_id' => $ctx['owner_type'] == 'super_admin' ? $location->parent_id : $location->id,         
+                        'location_name_og' => $location->name,
+                        'prefix'    => $location->identifier,
+                        'shortName' => $location->short_name,
 
                         // Location Emails
                         'emails' => $location->contacts
@@ -663,8 +708,6 @@ class LabController extends Controller
         }
     }
 
-
-
     /**
      * Update the specified resource in storage.
      */
@@ -682,8 +725,7 @@ class LabController extends Controller
                 'name' => $request->name,
                 'lab_type' => $request->lab_type,
                 'lab_code' => $request->lab_code,
-                'address' => $request->address ?? null,
-                'loaction_count' => $request->loaction_count,
+                'location_count' => $request->location_count,
                 'user_count' => $request->user_count
             ]);
 
@@ -720,7 +762,6 @@ class LabController extends Controller
                         'username' => Str::lower(Str::random(10)),
                         'dial_code' => $primaryPhone['value'] ? '+91' : null,
                         'phone' => $primaryPhone['value'] ?? null,
-                        'address' => $request->address ?? null,
                         'password' => Hash::make('superadmin1234'),
                         'is_super_admin' => true,
                     ]
@@ -740,12 +781,11 @@ class LabController extends Controller
             $lab->location()->delete();
 
             foreach ($request->location ?? [] as $loc) {
-                $labLocation = LabLocation::create([
+                $labLocation = Location::create([
                     'lab_id' => $lab->id,
-                    'location_id' => $loc['location_name'],
+                    'location_id' => $loc['location_id'],
                     'prefix' => $loc['prefix'],
                     'shortName' => $loc['shortName'] ?? null,
-                    'address' => $loc['address'] ?? null,
                 ]);
 
                 // Location Contacts
@@ -779,7 +819,6 @@ class LabController extends Controller
                             'username' => 'labadminuser'.Str::random(4),
                             'dial_code' => $primaryPhone['value'] ? '+91' : null,
                             'phone' => $primaryPhone['value'] ?? '8888888888',
-                            'address' => $loc['address'] ?? null,
                             'password' => Hash::make('admin123'),
                             'is_super_admin' => false,
                         ]
@@ -801,7 +840,7 @@ class LabController extends Controller
                 // Departments
                 foreach ($loc['departments'] ?? [] as $dept) {
                     LabLocationDepartment::create([
-                        'lab_location_id' => $labLocation->id,
+                        'location_id' => $labLocation->id,
                         'department_id' => $dept['name'] ?? null,
                     ]);
                 }
@@ -858,7 +897,6 @@ class LabController extends Controller
     {
         //
     }
-
     
     private function assignULDR($userId, $locationId, $departmentId, $roleId)
     {
@@ -900,13 +938,13 @@ class LabController extends Controller
         =============================== */
 
         $totalLabs      = Lab::count();
-        $totalLocations = LabLocation::count();
+        $totalLocations = Location::where('owner_type', 'lab')->count();
 
         /* ===============================
         LOAD DATA
         =============================== */
 
-        $labs = Lab::with('location.locationRecord')->get()->map(function ($lab) {
+        $labs = Lab::with('location')->get()->map(function ($lab) {
             app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
 
             $lab->roles = Role::where('lab_id', $lab->id)
