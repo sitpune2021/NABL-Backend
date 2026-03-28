@@ -86,6 +86,11 @@ class Location extends Model
             ->select('labs.id', 'labs.name');
     }
 
+    public function contacts()
+    {
+        return $this->morphMany(Contact::class, 'contactable');
+    }
+
     /*
     |--------------------------------------------------------------------------
     | Scopes
@@ -165,5 +170,10 @@ class Location extends Model
         return $this->owner_type === 'lab'
             && $this->parent_id === null
             && $this->appendedMaster !== null;
+    }
+
+    public function departments()
+    {
+        return $this->hasMany(LabLocationDepartment::class);
     }
 }

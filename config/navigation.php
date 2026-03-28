@@ -257,7 +257,7 @@ return [
       ]
     ]
   ],
-    [
+  [
     "key"=> "works",
     "path"=> "",
     "title"=> "Works",
@@ -280,6 +280,36 @@ return [
           "meta"=> [
             "description"=> [
               "translateKey"=> "nav.worksTasks.listDesc",
+              "label"=> "AI-powered chat systems"
+            ]
+          ],
+          "subMenu"=> []
+       ],
+    ]
+  ],
+   [
+    "key"=> "review",
+    "path"=> "",
+    "title"=> "Review",
+    "translateKey"=> "nav.review",
+    "icon"=> "concepts",
+    "type"=> "title",
+    "for"=> "lab",
+    "authority"=> [],
+    "meta"=> [],
+    "subMenu"=> [
+       [
+          "key"=> "review.review.list",
+          "path"=> "/review/review/list",
+          "title"=> "Data Review",
+          "translateKey"=> "nav.reviewReview.list",
+          "icon"=> "documentation",
+          "type"=> "item",
+          "for"=> "lab",
+          "authority"=> [],
+          "meta"=> [
+            "description"=> [
+              "translateKey"=> "nav.reviewReview.listDesc",
               "label"=> "AI-powered chat systems"
             ]
           ],

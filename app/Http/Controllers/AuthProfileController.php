@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\PermissionRegistrar;
-use App\Models\{User};
+use App\Models\{User, Lab};
 
 class AuthProfileController extends Controller
 {
@@ -15,27 +15,57 @@ class AuthProfileController extends Controller
     {
         $user = auth()->user();
 
-        $roles = $user->rolesWithLab()
+        $rolesCollection = $user->rolesWithLab()->get();
+
+        $labIds = $rolesCollection->pluck('lab_id')
+            ->filter(fn($id) => $id != 0)
+            ->unique();
+
+        $labs = Lab::with(['location.departments.department'])
+            ->whereIn('id', $labIds)
             ->get()
+            ->keyBy('id');
+
+        $roles = $rolesCollection
             ->groupBy('lab_id')
-            ->map(function ($group) {
+            ->map(function ($group) use ($user, $labs) {
+
+                $labId = $group->first()->lab_id;
+                $lab   = $labs[$labId] ?? null;
 
                 return [
-                    'lab_id'   => $group->first()->lab_id,
+                    'lab_id'   => $labId,
                     'lab_name' => $group->first()->lab_name ?? 'Master',
-                    'roles'    => $group->map(function ($role) {
+
+                    'roles' => $group->map(function ($role) {
                         return [
                             'id'          => $role->id,
                             'name'        => $role->name,
                             'level'       => $role->level,
                             'description' => $role->description,
                             'permissions' => $role->permissions
-                            ->pluck('name')
-                            ->values()->push('home', 'accessDenied')
+                                ->pluck('name')
+                                ->values()
+                                ->push('home', 'accessDenied'),
                         ];
-                    })->values()
-                ];
-            })->values();
+                    })->values(),
+
+                    // ✅ CONDITIONAL PART
+                    'locations' => ($labId != 0 && !$user->is_super_admin)
+                        ? ($lab?->location ?? [])
+                        : [],
+
+                    'departments' => ($labId != 0 && !$user->is_super_admin)
+                        ? ($lab?->location
+                            ->flatMap(function ($loc) {
+                                return $loc->departments->map(fn($ld) => $ld->department);
+                            })
+                            ->filter() // remove nulls
+                            ->values() ?? [])
+                        : [],
+                    ];
+            })
+            ->values();
 
         return response()->json([
             'status' => true,
