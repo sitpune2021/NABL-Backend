@@ -565,7 +565,7 @@ class DocumentController extends Controller
         }
     }
 
-    public function getDataEntriesByDocument($id)
+    public function getDataEntriesByDocument($id, Request $request)
     {
         $authUser = Auth::user();
 
@@ -580,10 +580,14 @@ class DocumentController extends Controller
         $document = Document::with('currentVersion')->findOrFail($id);
         $version = $document->currentVersion;
 
-        $entries = LabDocumentsEntryData::where('lab_id', $labUser->lab_id)
+        $raw = LabDocumentsEntryData::where('lab_id', $labUser->lab_id)
             ->where('document_id', $id)
-            ->with(['document', 'documentVersion', 'user'])
-            ->get();
+            ->with(['document', 'documentVersion', 'user']);
+
+            if($request->type == 'bysingle') {
+                $raw->where('user_id', $authUser->id);
+            }
+            $entries = $raw->get();
 
         // 🔹 Determine headers
         if ($document->mode === 'create' && $version?->form_fields) {
@@ -725,7 +729,7 @@ class DocumentController extends Controller
                 $query->orderBy($sortKey, $sortOrder);
             }
 
-                    // Pagination
+            // Pagination
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 

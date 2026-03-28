@@ -20,7 +20,8 @@ use App\Http\Controllers\{
     StandardController,
     ClauseDocumentLinkController,
     AuthProfileController,
-    CommentController
+    CommentController,
+    LabTaskAssignController
 };
 
 /*
@@ -228,5 +229,6 @@ Route::prefix('v1')->group(function () {
             Route::get('/{documentId}', [CommentController::class, 'index']);
             Route::post('/', [CommentController::class, 'store']);
         });
+        Route::apiResource('/lab-task-assign',LabTaskAssignController::class);
     });
 });
