@@ -20,7 +20,7 @@ class LocationController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Location::with(['cluster', 'cluster.zone'])
+            $query = Location::with(['cluster', 'cluster.zone', 'departments.department.users.user'])
                 ->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {

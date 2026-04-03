@@ -526,8 +526,8 @@ class DocumentController extends Controller
             $fieldsEntry = $validated['fields_entry'];
 
             // Handle file upload only if document mode is not 'create' and file exists
-            if ($document->mode !== 'create' && $request->hasFile('fields_entry.document')) {
-                $file = $request->file('fields_entry.document');
+            if ($document->mode !== 'create' && $request->hasFile('fields_entry.Document')) {
+                $file = $request->file('fields_entry.Document');
 
                     // Generate unique filename
                 $filename = time() . '_' . $file->getClientOriginalName();
@@ -536,7 +536,7 @@ class DocumentController extends Controller
                 $file->storeAs('documents', $filename, 'public');
 
                     // Replace file object with filename
-                    $fieldsEntry['document'] = $filename;
+                    $fieldsEntry['Document'] = $filename;
             }
 
                 // Create LabDocumentsEntryData
@@ -593,7 +593,7 @@ class DocumentController extends Controller
         if ($document->mode === 'create' && $version?->form_fields) {
             $headers = array_keys($version->form_fields);
         } else {
-            $headers = ['document']; // For file upload mode
+            $headers = ['Start_Date', 'End_Date','Document']; // For file upload mode
         }
 
         // 🔹 Build rows
@@ -612,7 +612,7 @@ class DocumentController extends Controller
                 $keyword = str_replace(' ', '_', $key);
 
                 $value = $fields[$keyword] ?? null;
-                if ($keyword === 'document' && $value) {
+                if ($keyword === 'Document' && $value) {
                     $value = Storage::disk('public')->url('documents/' . $value);
                 }
 

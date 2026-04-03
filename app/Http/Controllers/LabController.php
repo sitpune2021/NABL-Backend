@@ -274,7 +274,7 @@ class LabController extends Controller
                         
                         $this->assignULDR(
                             $admin->id,
-                            $loc['location_id'],
+                            $labLocation->id,
                             $departmentOg->id,
                             $roleIds->id
                         );

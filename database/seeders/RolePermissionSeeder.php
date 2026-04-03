@@ -87,8 +87,8 @@ class RolePermissionSeeder extends Seeder
             if ($item->children->isNotEmpty()) {
                 foreach ($item->children as $child) {
                     $modules[] = [
-                        'id' => str_replace([$item->key . '.', '.list'], '', $child->key),
-                        'key' =>  str_replace('.list', '', $child->key),
+                        'id' => str_replace([$item->key . '.', '.index'], '', $child->key),
+                        'key' =>  str_replace('.index', '', $child->key),
                         'name' => $child->title . ' Management',
                         'accessor' => $this->defaultPerms($child->key),
                     ];
@@ -104,8 +104,8 @@ class RolePermissionSeeder extends Seeder
     {
          $permissions =   config('master_permissions') ;
 
-        // Remove ".list" from key
-        $baseKey = str_replace('.list', '', $key);
+        // Remove ".index" from key
+        $baseKey = str_replace('.index', '', $key);
 
         // Filter permissions matching this module
         $matchedPermissions = collect($permissions)

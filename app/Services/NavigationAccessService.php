@@ -31,9 +31,9 @@ class NavigationAccessService
     protected function extractModules($item, &$modules, bool $isMaster, bool $isGroup)
     {
         // Only process module menu
-        if (str_ends_with($item->key, '.list')) {
+        if (str_ends_with($item->key, '.index')) {
 
-            $baseKey = str_replace('.list', '', $item->key);
+            $baseKey = str_replace('.index', '', $item->key);
 
             $parts = explode('.', $baseKey);
             $group = $parts[0];
@@ -65,7 +65,7 @@ class NavigationAccessService
     {
         $permissions =  !$isMaster ? config('master_permissions') : config('user_permissions');
         
-        $baseKey = str_replace('.list', '', $key);
+        $baseKey = str_replace('.index', '', $key);
 
         return collect($permissions)
             ->filter(function ($perm) use ($baseKey) {
@@ -80,15 +80,22 @@ class NavigationAccessService
 
                 // allowed action keywords
                 $allowed = [
-                    'list',
-                    'write',
+                    'index',
+                    'create',
+                    'edit',
+                    'show',
+                    'approve',
                     'delete',
                     'sync',
                     'action',
-                    'workflow-logs',
+                    'workflow',
                     'version',
                     'clause',
-                    'location'
+                    'location',
+                    'download',
+                    'assign',
+                    'rename',
+                    
                 ];
 
                 return in_array($firstSegment, $allowed);
