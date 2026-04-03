@@ -126,6 +126,7 @@ class ClauseDocumentLinkController extends Controller
         }
 
         $standard = Standard::with($with)->findOrFail($id);
+        $this->loadRecursiveRelations($standard->clauses, $ctx);
 
         // ✅ IMPORTANT: Replace documents with lab version
         if ($ctx['owner_type'] === 'lab') {
@@ -133,6 +134,32 @@ class ClauseDocumentLinkController extends Controller
         }
 
         return response()->json($standard);
+    }
+    private function loadRecursiveRelations($clauses, $ctx)
+    {
+        foreach ($clauses as $clause) {
+
+            if ($ctx['owner_type'] === 'lab') {
+
+                $clause->load([
+                    'documents.labVersion' => function ($q) use ($ctx) {
+                        $q->where('owner_id', $ctx['owner_id']);
+                    },
+                    'documents.labVersion.currentVersion' => function ($q) {
+                        $q->where('is_current', true);
+                    }
+                ]);
+            } else {
+
+                $clause->load('documents.currentVersion');
+            }
+
+            $clause->load('children');
+
+            if ($clause->children && $clause->children->count()) {
+                $this->loadRecursiveRelations($clause->children, $ctx);
+            }
+        }
     }
 
     private function replaceWithLabDocuments($clauses)

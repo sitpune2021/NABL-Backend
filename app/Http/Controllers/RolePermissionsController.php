@@ -21,7 +21,7 @@ class RolePermissionsController extends Controller
     {
         $user = auth()->user();
         $ctx = $this->labContext(request());
-        
+
         $minLevel = $user->roles
             ->where('lab_id', $ctx['lab_id'])          // ✅ Current lab roles
             ->min('level');
@@ -39,6 +39,7 @@ class RolePermissionsController extends Controller
                     'id' => $role->id,
                     'name' => $role->name,
                     'description' => $role->description,
+                    'level' => $role->level,
                     'accessRight' => $this->formatPermissions($role->permissions->pluck('name')->toArray()),
                     'users' => $role->users->map(function ($user) {
                         return [
@@ -68,6 +69,7 @@ class RolePermissionsController extends Controller
             'name' => 'required|string|unique:roles,name',
             'description' => 'nullable|string',
             'accessRight' => 'required|array',
+            'level' => 'required|integer|min:1',
         ]);
 
         $ctx = $this->labContext(request());
@@ -75,19 +77,38 @@ class RolePermissionsController extends Controller
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
+        $user = auth()->user();
+
+        //  FIX: explicitly use roles.lab_id
+        $userMinLevel = $user->roles()
+            ->where('roles.lab_id', $ctx['lab_id'])
+            ->min('roles.level');
+
         $targetLevel = $request->level;
-        $maxLevel = Role::where('lab_id', $ctx['lab_id'])->max('level') ?? 0;
-        if ($targetLevel > $maxLevel) {
-            $insertLevel = $maxLevel + 1;
-        } else {
-            Role::where('lab_id', $ctx['lab_id'])->where('level', '>=', $targetLevel)->increment('level');
-            $insertLevel = $targetLevel;
+
+        //  Restrict hierarchy
+        if ($userMinLevel !== null && $targetLevel <= $userMinLevel) {
+            return response()->json([
+                'message' => 'You cannot create a role at this level or above your level'
+            ], 422);
         }
 
+        //  Get role (NOT exists → need name)
+        $existingRole = Role::where('lab_id', $ctx['lab_id'])
+            ->where('level', $targetLevel)
+            ->first();
+
+        if ($existingRole) {
+            return response()->json([
+                'message' => $existingRole->name . ' role already exists at level ' . $targetLevel
+            ], 422);
+        }
+
+        //  Create role
         $role = Role::create([
             'name' => $request->name,
             'description' => $request->description ?? null,
-            'level' => $insertLevel,
+            'level' => $targetLevel,
             'lab_id' => $ctx['lab_id']
         ]);
 
@@ -126,6 +147,7 @@ class RolePermissionsController extends Controller
                 'id' => $role->id,
                 'name' => $role->name,
                 'description' => $role->description,
+                'level' => $role->level,
                 'accessRight' => $request->accessRight,
             ],
         ], 201);
