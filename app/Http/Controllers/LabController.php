@@ -12,14 +12,14 @@ use Spatie\Permission\PermissionRegistrar;
 
 use App\Services\NavigationAccessService;
 
-use App\Models\{Lab, 
-    Location, 
-    LabLocationDepartment, 
-    LabUser, 
-    Contact, 
-    User, 
-    UserLocationDepartmentRole, 
-    LabClauseDocument, 
+use App\Models\{Lab,
+    Location,
+    LabLocationDepartment,
+    LabUser,
+    Contact,
+    User,
+    UserLocationDepartmentRole,
+    LabClauseDocument,
     Document,
     DocumentDepartment,
     DocumentVersion,
@@ -29,10 +29,10 @@ use App\Models\{Lab,
     Template,
     Category,
     SubCategory,
-    Department, 
+    Department,
     Unit,
     TemplateChangeHistory,
-    UserAssignment, 
+    UserAssignment,
     Zone,
     Cluster,
     };
@@ -63,7 +63,7 @@ class LabController extends Controller
                 });
             }
         );
-                
+
         // Otherwise → show all labs
         $labs = $query->get();
 
@@ -80,7 +80,7 @@ class LabController extends Controller
     public function store(Request $request, NavigationAccessService $service)
     {
         DB::beginTransaction();
-        
+
         try {
             // 1. Create Lab
             $lab = Lab::create([
@@ -126,11 +126,11 @@ class LabController extends Controller
                     'name' => $level == 1 ? 'Super Admin' : 'Admin',
                     'lab_id' => $lab->id,
                     'level' => $level,
-                    'description' => $level == 1 
+                    'description' => $level == 1
                         ? 'Super Admin Role'
                         : 'Admin Role'
                 ]);
-                
+
                 $moduleMap = [];
                 foreach ($modules as $module) {
                     $moduleMap[$module['key']] = $module['key'];
@@ -271,7 +271,7 @@ class LabController extends Controller
                             'level' => 2,
                             'lab_id' => $lab->id
                         ])->firstOrFail();
-                        
+
                         $this->assignULDR(
                             $admin->id,
                             $loc['location_id'],
@@ -486,7 +486,7 @@ class LabController extends Controller
             $newVersion->version_status = 'active';
             $newVersion->workflow_state = $newDocument->mode == 'create' ? 'prepared' : 'issued';
             $newVersion->save();
-            
+
             if($newDocument->mode == 'create'){
                 // templates
                 foreach ($version->templates as $template) {
@@ -624,9 +624,9 @@ class LabController extends Controller
                     $primaryPhone = $location->contacts->where('type', 'phone')->firstWhere('is_primary', true);
 
                     return [
-                        'zone_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->zone->parent_id : $location->cluster->zone->id,   
-                        'cluster_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->parent_id : $location->cluster->id,   
-                        'location_id' => $ctx['owner_type'] == 'super_admin' ? $location->parent_id : $location->id,         
+                        'zone_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->zone->parent_id : $location->cluster->zone->id,
+                        'cluster_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->parent_id : $location->cluster->id,
+                        'location_id' => $ctx['owner_type'] == 'super_admin' ? $location->parent_id : $location->id,
                         'location_name_og' => $location->name,
                         'prefix'    => $location->identifier,
                         'shortName' => $location->short_name,
@@ -897,7 +897,7 @@ class LabController extends Controller
     {
         //
     }
-    
+
     private function assignULDR($userId, $locationId, $departmentId, $roleId)
     {
         $uldr = UserLocationDepartmentRole::create([
@@ -1071,7 +1071,45 @@ class LabController extends Controller
 
             $role = Role::where('lab_id', $validated['lab_id'])
                 ->findOrFail($validated['role_id']);
-                if($validated['action'] === 'assign') {
+
+        /* =====================================
+            LEVEL VALIDATION (NEW - IMPORTANT)
+        ===================================== */
+
+        // Lab level → only level 1
+        if (is_null($validated['location_id']) && $role->level != 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Only Level 1 roles allowed at Lab level'
+            ], 422);
+        }
+
+        // Location level → no level 1
+        if (!is_null($validated['location_id']) && $role->level == 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Level 1 roles not allowed at Location level'
+            ], 422);
+        }
+
+        /* =====================================
+           PREVENT DUPLICATE (NEW FIX)
+        ===================================== */
+
+        $exists = UserAssignment::where([
+            'user_id'     => $user->id,
+            'lab_id'      => $validated['lab_id'],
+            'location_id' => $validated['location_id'],
+            'role_id'     => $role->id,
+        ])->exists();
+
+        /* =====================================
+           ASSIGN
+        ===================================== */
+
+        if ($validated['action'] === 'assign') {
+
+            if (!$exists) {
 
                     $user->assignRole($role);
                     $user->syncPermissions(
@@ -1087,6 +1125,7 @@ class LabController extends Controller
                         ],
                         [] // no extra fields yet
                     );
+                }
                 }
                 else{
                     $user->removeRole($role);
