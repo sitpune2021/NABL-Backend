@@ -20,4 +20,9 @@ class LabUser extends Model
     {
         return $this->belongsTo(User::class);
     }
+
+    public function accesses()
+    {
+        return $this->hasMany(LabUserAccess::class);
+    }
 }

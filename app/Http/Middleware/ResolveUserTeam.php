@@ -25,8 +25,7 @@ class ResolveUserTeam
         }
         $labId = (int) $request->header('X-Lab-Id');
 
-        app(PermissionRegistrar::class)
-            ->setPermissionsTeamId($labId);
+        app(PermissionRegistrar::class)->setPermissionsTeamId($labId);
 
         return $next($request);
     }

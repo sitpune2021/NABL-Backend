@@ -269,9 +269,26 @@ return [
     "meta"=> [],
     "subMenu"=> [
        [
-          "key"=> "works.tasks.index",
-          "path"=> "/works/tasks/list",
-          "title"=> "Tasks",
+          "key"=> "works.tasks.assign.index",
+          "path"=> "/works/tasks/assign/list",
+          "title"=> "Tasks Assign",
+          "translateKey"=> "nav.worksTasks.index",
+          "icon"=> "documentation",
+          "type"=> "item",
+          "for"=> "lab",
+          "authority"=> [],
+          "meta"=> [
+            "description"=> [
+              "translateKey"=> "nav.worksTasks.listDesc",
+              "label"=> "AI-powered chat systems"
+            ]
+          ],
+          "subMenu"=> []
+       ],
+       [
+          "key"=> "works.tasks.entry.index",
+          "path"=> "/works/tasks/entry/list",
+          "title"=> "Assign Tasks",
           "translateKey"=> "nav.worksTasks.index",
           "icon"=> "documentation",
           "type"=> "item",

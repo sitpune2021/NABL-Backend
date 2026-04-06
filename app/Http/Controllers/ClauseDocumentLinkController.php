@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\ClauseDocumentLink;
 use App\Models\Standard;
 use App\Models\Clause;
-use App\Models\LabTaskAssign;
+use App\Models\Assignment;
 
 class ClauseDocumentLinkController extends Controller
 {
@@ -106,7 +106,40 @@ class ClauseDocumentLinkController extends Controller
         $documentIds = collect();
 
         if ($request->type === 'bysingle') {
-            $tasks = LabTaskAssign::where('user_id', Auth::id())->get();
+            $userAccess = \App\Models\LabUserAccess::with([
+                'location',
+                'department'
+            ])
+            ->whereHas('labUser', function ($q) {
+                $q->where('user_id', Auth::id());
+            })
+            ->get();
+
+            $locationIds = $userAccess->pluck('location_id')->filter()->unique();
+
+            $departmentIds = $userAccess->pluck('lab_location_department_id')
+                ->filter()
+                ->unique();
+
+            $tasks = Assignment::where(function ($q) use ($locationIds, $departmentIds) {
+
+                // ✅ USER LEVEL
+                $q->where('user_id',Auth::id())
+
+                // ✅ DEPARTMENT LEVEL
+                ->orWhere(function ($q2) use ($departmentIds) {
+                    $q2->whereNull('user_id')
+                    ->whereIn('department_id', $departmentIds);
+                })
+
+                // ✅ LOCATION LEVEL
+                ->orWhere(function ($q3) use ($locationIds) {
+                    $q3->whereNull('user_id')
+                    ->whereNull('department_id')
+                    ->whereIn('location_id', $locationIds);
+                });
+
+            })->get();
 
             $clauseIds = $tasks->pluck('clause_id')->unique();
             $documentIds = $tasks->pluck('document_id')->unique();

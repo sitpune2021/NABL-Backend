@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('lab_id')->constrained('labs')->onDelete('cascade'); 
             $table->foreignId('user_id')->constrained('users')->onDelete('cascade'); 
+            $table->unique(['lab_id', 'user_id']);
             $table->timestamps();
             $table->softDeletes();
         });

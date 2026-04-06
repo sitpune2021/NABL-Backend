@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
-use App\Models\{LabTaskAssign, Location};
+use App\Models\{Location, Assignment};
 
 class LabTaskAssignController extends Controller
 {
@@ -19,17 +19,13 @@ class LabTaskAssignController extends Controller
     {
         $ctx = $this->labContext($request);
 
-        $tasks = LabTaskAssign::with(['user:id,name,email'])
-            ->where('lab_id', $ctx['lab_id'])
-            ->get([
-                'id',
-                'lab_id',
-                'clause_id',
-                'document_id',
-                'user_id',
-                'location_id',
-                'department_id'
-            ]);
+        $tasks = Assignment::with([
+            'user:id,name,email',
+            'location:id,name',
+            'department:id,name'
+        ])
+        // ->where('lab_id', $ctx['lab_id'])
+        ->get();
 
         return response()->json([
             'status' => true,
@@ -40,106 +36,100 @@ class LabTaskAssignController extends Controller
 
     public function store(Request $request)
     {
-        $ctx = $this->labContext($request);
-
-        $validator = Validator::make($request->all(), [
-            'clause_id'     => 'required|exists:clauses,id',
-            'document_id'   => 'required|exists:documents,id',
-            'location_id'   => 'required|exists:locations,id',
-            'department_id' => 'nullable|exists:departments,id',
-            'user_id'       => 'nullable|exists:users,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
+        DB::beginTransaction();
 
         try {
-            DB::beginTransaction();
+            $authUser = auth()->user();
+            $ctx = $this->labContext($request);
 
-            $location = Location::with([
-                'departments.department.users'
-            ])->findOrFail($request->location_id);
+            // ✅ VALIDATION
+            $request->validate([
+                'document_id' => 'required|integer',
+                'clause_id' => 'required|integer',
+                'location_id' => 'required|integer',
+                'department_id' => 'nullable|integer',
+                'user_ids' => 'nullable|array',
+            ]);
 
-            $userData = collect();
+            $locationId   = $request->location_id;
+            $departmentId = $request->department_id;
+            $userIds      = $request->user_ids ?? [];
 
-            // 🔥 CASE 1: SINGLE USER
-            if ($request->user_id) {
-                $userData = collect([[
-                    'user_id' => $request->user_id,
-                    'department_id' => $request->department_id
-                ]]);
+            // 🔥 CLEAN OLD ASSIGNMENTS (IMPORTANT)
+            Assignment::where([
+                // 'lab_id' => $ctx['lab_id'],
+                'document_id' => $request->document_id,
+                'clause_id' => $request->clause_id,
+                'location_id' => $locationId,
+            ])->delete();
+
+            // 🔥 CASE 1: LOCATION LEVEL
+            if ($locationId && !$departmentId && empty($userIds)) {
+
+                Assignment::updateOrCreate([
+                    // 'lab_id' => $ctx['lab_id'],
+                    'document_id' => $request->document_id,
+                    'clause_id'   => $request->clause_id,
+                    'location_id' => $locationId,
+                    'department_id' => null,
+                    'user_id' => null,
+                ], [
+                    'scope_type' => 'location',
+                    'assigned_by' => $authUser->id,
+                    'assigned_at' => now(),
+                ]);
             }
 
-            // 🔥 CASE 2: DEPARTMENT USERS
-            elseif ($request->department_id) {
-                $department = collect($location->departments)
-                    ->firstWhere('department_id', $request->department_id);
+            // 🔥 CASE 2: DEPARTMENT LEVEL
+            elseif ($locationId && $departmentId && empty($userIds)) {
 
-                $userData = collect($department?->department?->users ?? [])
-                    ->map(fn($u) => [
-                        'user_id' => $u->user_id,
-                        'department_id' => $request->department_id
-                    ]);
+                Assignment::updateOrCreate([
+                    // 'lab_id' => $ctx['lab_id'],
+                    'document_id' => $request->document_id,
+                    'clause_id'   => $request->clause_id,
+                    'location_id' => $locationId,
+                    'department_id' => $departmentId,
+                    'user_id' => null,
+                ], [
+                    'scope_type' => 'department',
+                    'assigned_by' => $authUser->id,
+                    'assigned_at' => now(),
+                ]);
             }
 
-            // 🔥 CASE 3: LOCATION USERS
+            // 🔥 CASE 3: USER LEVEL
             else {
-                $userData = collect($location->departments)
-                    ->flatMap(function ($d) {
-                        return collect($d->department->users ?? [])
-                            ->map(fn($u) => [
-                                'user_id' => $u->user_id,
-                                'department_id' => $d->department_id // ✅ KEY FIX
-                            ]);
-                    });
+
+                foreach ($userIds as $userId) {
+
+                    Assignment::updateOrCreate([
+                        // 'lab_id' => $ctx['lab_id'],
+                        'document_id' => $request->document_id,
+                        'clause_id'   => $request->clause_id,
+                        'location_id' => $locationId,
+                        'department_id' => $departmentId,
+                        'user_id' => $userId,
+                    ], [
+                        'scope_type' => 'user',
+                        'assigned_by' => $authUser->id,
+                        'assigned_at' => now(),
+                    ]);
+                }
             }
-
-            // ✅ unique users
-            $userData = $userData->unique('user_id');
-
-            if ($userData->isEmpty()) {
-                return response()->json([
-                    'status' => false,
-                    'message' => 'No users found'
-                ], 400);
-            }
-
-            // 🔥 UPSERT
-            $insertData = $userData->map(fn($u) => [
-                'lab_id'        => $ctx['lab_id'],
-                'clause_id'     => $request->clause_id,
-                'document_id'   => $request->document_id,
-                'location_id'   => $request->location_id,
-                'department_id' => $u['department_id'], // ✅ no null issue
-                'user_id'       => $u['user_id'],
-                'assigned_by'   => auth()->id(),
-                'created_at'    => now(),
-                'updated_at'    => now(),
-            ])->values()->toArray();
-
-            LabTaskAssign::upsert(
-                $insertData,
-                ['lab_id', 'clause_id', 'document_id', 'user_id'],
-                ['location_id', 'department_id', 'updated_at']
-            );
 
             DB::commit();
 
             return response()->json([
-                'status' => true,
-                'message' => 'Task assigned successfully'
+                'success' => true,
+                'message' => 'Assignment saved successfully'
             ]);
 
         } catch (\Exception $e) {
+
             DB::rollBack();
 
             return response()->json([
-                'status' => false,
-                'message' => 'Something went wrong',
+                'success' => false,
                 'error' => $e->getMessage()
             ], 500);
         }

@@ -649,7 +649,6 @@ class TemplateController extends Controller
                 'status'                 => $labTemplate->status,
                 'owner_type'             => 'super_admin',
                 'owner_id'               => null,
-                'appended_from_lab_id'   => $labTemplate->owner_id,
             ]);
 
             $currentVersion = $labTemplate->currentVersion;

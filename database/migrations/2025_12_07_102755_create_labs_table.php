@@ -16,8 +16,9 @@ return new class extends Migration
             $table->string('name');
             $table->string('lab_type');
             $table->string('lab_code')->unique();
-            $table->string('location_count');
-            $table->string('user_count');
+            $table->unsignedInteger('location_limit')->nullable();
+            $table->unsignedInteger('user_limit')->nullable();
+            $table->foreignId('created_by')->constrained('users')->onDelete('cascade');
             $table->timestamps();
             $table->softDeletes();
         });

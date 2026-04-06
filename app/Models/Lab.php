@@ -9,7 +9,24 @@ class Lab extends Model
 {
      use SoftDeletes;
 
-    protected $fillable = ['name','lab_type','lab_code', 'location_count', 'user_count'];
+    protected $fillable = [
+        'name',
+        'lab_type',
+        'lab_code',
+        'location_limit',
+        'user_limit',
+        'created_by'
+    ];
+
+    public function users()
+    {
+        return $this->hasMany(LabUser::class);
+    }
+
+    public function instruments()
+    {
+        return $this->hasMany(LabInstrumentAssignment::class);
+    }
 
     public function contacts()
     {
@@ -29,16 +46,6 @@ class Lab extends Model
     public function location()
     {
         return $this->hasMany(Location::class, 'owner_id');
-    }
-
-    public function users()
-    {
-        return $this->belongsToMany(User::class, 'lab_users');
-    }
-
-    public function labClauseDocuments()
-    {
-        return $this->hasMany(LabClauseDocument::class, 'lab_id');
     }
 
 }

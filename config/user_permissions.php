@@ -70,9 +70,14 @@ return [
     'masters.instrument.show',
     'masters.instrument.delete',
 
-    'works.tasks.index',
-    
+    'works.tasks.assign.index',
+    'works.tasks.assign.assign',
+
+    'works.tasks.entry.index',
+
     'review.review.index',
+    'review.review.record.show',
+    'review.review.comment',
 
     'settings.rolesPermission.index',
     'settings.rolesPermission.create',

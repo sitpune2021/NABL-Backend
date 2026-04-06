@@ -22,7 +22,7 @@ class DepartmentController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Department::query()->with('users')->where('status', 'completed');
+            $query = Department::query()->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
                  $query->with('lab')->SuperAdmin();

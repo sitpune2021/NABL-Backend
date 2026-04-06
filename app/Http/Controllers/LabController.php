@@ -18,8 +18,6 @@ use App\Models\{Lab,
     LabUser, 
     Contact, 
     User, 
-    UserLocationDepartmentRole, 
-    LabClauseDocument, 
     Document,
     DocumentDepartment,
     DocumentVersion,
@@ -35,6 +33,7 @@ use App\Models\{Lab,
     UserAssignment, 
     Zone,
     Cluster,
+    LabUserAccess,
     };
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 
@@ -87,9 +86,11 @@ class LabController extends Controller
                 'name' => $request->name,
                 'lab_type' => $request->lab_type,
                 'lab_code' => $request->lab_code,
-                'location_count' => $request->location_count,
-                'user_count' => $request->user_count
+                'location_limit' => $request->location_limit,
+                'user_limit' => $request->user_limit,
+                'created_by' => auth()->id(),
             ]);
+
             $modules = $service->getAccessModules(true, false);
             foreach ($modules as $module) {
                 foreach ($module['accessor'] as $perm) {
@@ -236,6 +237,14 @@ class LabController extends Controller
                         'user_id' => $admin->id,
                     ]);
 
+                    LabUserAccess::create([
+                        'lab_user_id' => LabUser::where(['lab_id' => $lab->id, 'user_id' => $admin->id])->first()->id,
+                        'location_id' => $labLocation->id,
+                        'role_id' => $labadminRole->id,
+                        'status' => 'active',
+                        'granted_at' => now(),
+                    ]);
+
                     $department = Department::SuperAdmin()->get();
                     foreach ($department as $dept) {
                         Department::create([
@@ -271,13 +280,6 @@ class LabController extends Controller
                             'level' => 2,
                             'lab_id' => $lab->id
                         ])->firstOrFail();
-                        
-                        $this->assignULDR(
-                            $admin->id,
-                            $labLocation->id,
-                            $departmentOg->id,
-                            $roleIds->id
-                        );
                     }
                 }
                 // Departments
@@ -324,7 +326,7 @@ class LabController extends Controller
                     }
                 }
 
-                LabClauseDocument::insert($records);
+                // LabClauseDocument::insert($records);
             }
 
         if (!empty($request->documents)) {
@@ -564,7 +566,6 @@ class LabController extends Controller
                 'location',
                 'location.cluster',
                 'location.cluster.zone',
-                'labClauseDocuments',
                 'users',
             ])->findOrFail($id);
             $ctx = $this->labContext($request);
@@ -578,13 +579,14 @@ class LabController extends Controller
                 'is_super_admin' => $user->is_super_admin,
             ]);
 
-            $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
+            // $standardId = $lab->labClauseDocuments->first()->standard_id ?? null;
+             $standardId = null; // Placeholder, replace with actual retrieval logic
             $data = [
                 'name'     => $lab->name,
                 'lab_type'  => $lab->lab_type,
                 'lab_code'  => $lab->lab_code,
-                'location_count' => $lab->location_count,
-                'user_count' => $lab->user_count,
+                'location_limit' => $lab->location_limit,
+                'user_limit' => $lab->user_limit,
 
                 // Lab Emails
                 'emails' => $lab->contacts
@@ -678,14 +680,14 @@ class LabController extends Controller
                         ])->values(),
                     ];
                 })->values(),
-                'standard_id' => $standardId,
-                'selectedClauses' => $lab->labClauseDocuments->flatMap(function($doc) {
-                    if ($doc->document_id) {
-                        return ["doc-{$doc->clause_id}-{$doc->document_id}"];
-                    } else {
-                        return ["clause-{$doc->clause_id}"];
-                    }
-                })->values(),
+                // 'standard_id' => $standardId,
+                // 'selectedClauses' => $lab->labClauseDocuments->flatMap(function($doc) {
+                //     if ($doc->document_id) {
+                //         return ["doc-{$doc->clause_id}-{$doc->document_id}"];
+                //     } else {
+                //         return ["clause-{$doc->clause_id}"];
+                //     }
+                // })->values(),
             ];
 
             return response()->json([
@@ -725,8 +727,9 @@ class LabController extends Controller
                 'name' => $request->name,
                 'lab_type' => $request->lab_type,
                 'lab_code' => $request->lab_code,
-                'location_count' => $request->location_count,
-                'user_count' => $request->user_count
+                'location_limit' => $request->location_limit,
+                'user_limit' => $request->user_limit,
+                'created_by' => auth()->id(),
             ]);
 
             // 2. Update Lab contacts (emails + phones)
@@ -827,14 +830,6 @@ class LabController extends Controller
                     $admin->assignRole('Admin');
 
                     $departmentId = $loc['departments'][0]['name'] ?? null;
-                    if ($departmentId) {
-                        $this->assignULDR(
-                            $admin->id,
-                            $labLocation->id,
-                            $departmentId,
-                            Role::where('name', 'Admin')->first()->id
-                        );
-                    }
                 }
 
                 // Departments
@@ -847,38 +842,38 @@ class LabController extends Controller
             }
 
             // 5. Update LabClauseDocuments
-            $lab->labClauseDocuments()->delete(); // remove old clause documents
+            // $lab->labClauseDocuments()->delete(); // remove old clause documents
 
-            if (!empty($request->selectedClauses) && $request->standard_id) {
-                $records = [];
-                $standardId = $request->standard_id;
+            // if (!empty($request->selectedClauses) && $request->standard_id) {
+            //     $records = [];
+            //     $standardId = $request->standard_id;
 
-                foreach ($request->selectedClauses as $item) {
-                    if (str_starts_with($item, 'clause-')) {
-                        $clauseId = intval(substr($item, 7));
-                        $records[] = [
-                            'lab_id' => $lab->id,
-                            'standard_id' => $standardId,
-                            'clause_id' => $clauseId,
-                            'document_id' => null,
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ];
-                    } elseif (str_starts_with($item, 'doc-')) {
-                        [$prefix, $clauseId, $docId] = explode('-', $item);
-                        $records[] = [
-                            'lab_id' => $lab->id,
-                            'standard_id' => $standardId,
-                            'clause_id' => intval($clauseId),
-                            'document_id' => intval($docId),
-                            'created_at' => now(),
-                            'updated_at' => now(),
-                        ];
-                    }
-                }
+            //     foreach ($request->selectedClauses as $item) {
+            //         if (str_starts_with($item, 'clause-')) {
+            //             $clauseId = intval(substr($item, 7));
+            //             $records[] = [
+            //                 'lab_id' => $lab->id,
+            //                 'standard_id' => $standardId,
+            //                 'clause_id' => $clauseId,
+            //                 'document_id' => null,
+            //                 'created_at' => now(),
+            //                 'updated_at' => now(),
+            //             ];
+            //         } elseif (str_starts_with($item, 'doc-')) {
+            //             [$prefix, $clauseId, $docId] = explode('-', $item);
+            //             $records[] = [
+            //                 'lab_id' => $lab->id,
+            //                 'standard_id' => $standardId,
+            //                 'clause_id' => intval($clauseId),
+            //                 'document_id' => intval($docId),
+            //                 'created_at' => now(),
+            //                 'updated_at' => now(),
+            //             ];
+            //         }
+            //     }
 
-                LabClauseDocument::insert($records);
-            }
+            //     LabClauseDocument::insert($records);
+            // }
 
             DB::commit();
 
@@ -897,20 +892,7 @@ class LabController extends Controller
     {
         //
     }
-    
-    private function assignULDR($userId, $locationId, $departmentId, $roleId)
-    {
-        $uldr = UserLocationDepartmentRole::create([
-            'user_id'       => $userId,
-            'location_id'   => $locationId,
-            'department_id' => $departmentId,
-            'role_id'       => $roleId,
-            'status'        => 'active',
-            'position_type' => 'permanent',
-        ]);
 
-        return $uldr;
-    }
 
     public function labAssignments()
     {
@@ -1026,7 +1008,7 @@ class LabController extends Controller
             'data' => [
                 'lab_count'          => $totalLabs,
                 'lab_location_count' => $totalLocations,
-                'user_count'         => $totalUsers,
+                'user_limit'         => $totalUsers,
 
                 'users'   => $users,
                 'labs'    => $labs,

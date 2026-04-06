@@ -17,6 +17,10 @@ return new class extends Migration
             $table->unsignedBigInteger('clause_id');
             $table->unsignedBigInteger('document_id');
             $table->unsignedBigInteger('document_version_id')->nullable();
+
+            $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
+            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
+            
             $table->timestamps();
 
             $table->foreign('standard_id')->references('id')->on('standards')->onDelete('cascade');

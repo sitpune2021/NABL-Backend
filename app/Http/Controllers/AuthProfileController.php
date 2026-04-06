@@ -15,14 +15,21 @@ class AuthProfileController extends Controller
     {
         $user = auth()->user();
 
+        // ✅ Load BOTH
         $rolesCollection = $user->rolesWithLab()->get();
+
+        $user->load([
+            'labUsers.lab',
+            'labUsers.accesses.role',
+            'labUsers.accesses.location',
+            'labUsers.accesses.department.department',
+        ]);
 
         $labIds = $rolesCollection->pluck('lab_id')
             ->filter(fn($id) => $id != 0)
             ->unique();
 
-        $labs = Lab::with(['location.departments.department'])
-            ->whereIn('id', $labIds)
+        $labs = Lab::whereIn('id', $labIds)
             ->get()
             ->keyBy('id');
 
@@ -33,10 +40,56 @@ class AuthProfileController extends Controller
                 $labId = $group->first()->lab_id;
                 $lab   = $labs[$labId] ?? null;
 
+                // ✅ GET ACCESSES FOR THIS LAB
+                $labUser = $user->labUsers->firstWhere('lab_id', $labId);
+                $accesses = $labUser?->accesses ?? collect();
+
+                // ✅ GROUP BY LOCATION
+                $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
+
+                    $location = optional($locationAccesses->first()->location);
+
+                    // LOCATION ROLES
+                    $locationRoles = $locationAccesses
+                        ->whereNull('lab_location_department_id')
+                        ->map(fn($a) => [
+                            'id' => $a->role->id,
+                            'name' => $a->role->name,
+                        ])
+                        ->values();
+
+                    // DEPARTMENT ROLES
+                    $departments = $locationAccesses
+                        ->whereNotNull('lab_location_department_id')
+                        ->groupBy('lab_location_department_id')
+                        ->map(function ($deptAccesses) {
+
+                            $department = optional($deptAccesses->first()->department);
+
+                            return [
+                                'id' => $department?->id,
+                                'name' => $department?->department?->name,
+                                'roles' => $deptAccesses->map(fn($a) => [
+                                    'id' => $a->role->id,
+                                    'name' => $a->role->name,
+                                ])->values()
+                            ];
+                        })
+                        ->values();
+
+                    return [
+                        'id' => $location?->id,
+                        'name' => $location?->name,
+                        'roles' => $locationRoles,
+                        'departments' => $departments
+                    ];
+                })->values();
+
                 return [
                     'lab_id'   => $labId,
                     'lab_name' => $group->first()->lab_name ?? 'Master',
 
+                    // ✅ KEEP YOUR EXISTING ROLE STRUCTURE
                     'roles' => $group->map(function ($role) {
                         return [
                             'id'          => $role->id,
@@ -50,20 +103,12 @@ class AuthProfileController extends Controller
                         ];
                     })->values(),
 
-                    // ✅ CONDITIONAL PART
+                    // ✅ NEW: ACCESS-BASED STRUCTURE
                     'locations' => ($labId != 0 && !$user->is_super_admin)
-                        ? ($lab?->location ?? [])
+                        ? $locations
                         : [],
 
-                    'departments' => ($labId != 0 && !$user->is_super_admin)
-                        ? ($lab?->location
-                            ->flatMap(function ($loc) {
-                                return $loc->departments->map(fn($ld) => $ld->department);
-                            })
-                            ->filter() // remove nulls
-                            ->values() ?? [])
-                        : [],
-                    ];
+                ];
             })
             ->values();
 

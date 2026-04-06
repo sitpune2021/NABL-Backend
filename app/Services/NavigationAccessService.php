@@ -95,7 +95,9 @@ class NavigationAccessService
                     'download',
                     'assign',
                     'rename',
-                    
+                    'record',
+                    'comment',
+                    'review'
                 ];
 
                 return in_array($firstSegment, $allowed);

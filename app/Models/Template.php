@@ -18,7 +18,6 @@ class Template extends Model
         'status',
         'owner_type',
         'owner_id',
-        'appended_from_lab_id',
     ];
 
     protected $casts = [
