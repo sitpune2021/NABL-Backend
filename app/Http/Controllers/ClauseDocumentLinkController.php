@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use App\Models\ClauseDocumentLink;
 use App\Models\Standard;
 use App\Models\Clause;
+use App\Models\Assignment;
 
 class ClauseDocumentLinkController extends Controller
 {
@@ -99,6 +101,50 @@ class ClauseDocumentLinkController extends Controller
             'clauses.children'
         ];
 
+        // ✅ STEP 1: Get user assigned tasks (only if bysingle)
+        $clauseIds = collect();
+        $documentIds = collect();
+
+        if ($request->type === 'bysingle') {
+            $userAccess = \App\Models\LabUserAccess::with([
+                'location',
+                'department'
+            ])
+            ->whereHas('labUser', function ($q) {
+                $q->where('user_id', Auth::id());
+            })
+            ->get();
+
+            $locationIds = $userAccess->pluck('location_id')->filter()->unique();
+
+            $departmentIds = $userAccess->pluck('lab_location_department_id')
+                ->filter()
+                ->unique();
+
+            $tasks = Assignment::where(function ($q) use ($locationIds, $departmentIds) {
+
+                // ✅ USER LEVEL
+                $q->where('user_id',Auth::id())
+
+                // ✅ DEPARTMENT LEVEL
+                ->orWhere(function ($q2) use ($departmentIds) {
+                    $q2->whereNull('user_id')
+                    ->whereIn('department_id', $departmentIds);
+                })
+
+                // ✅ LOCATION LEVEL
+                ->orWhere(function ($q3) use ($locationIds) {
+                    $q3->whereNull('user_id')
+                    ->whereNull('department_id')
+                    ->whereIn('location_id', $locationIds);
+                });
+
+            })->get();
+
+            $clauseIds = $tasks->pluck('clause_id')->unique();
+            $documentIds = $tasks->pluck('document_id')->unique();
+        }
+
         // ✅ LAB CONTEXT
         if ($ctx['owner_type'] === 'lab') {
 
@@ -131,6 +177,11 @@ class ClauseDocumentLinkController extends Controller
         // ✅ IMPORTANT: Replace documents with lab version
         if ($ctx['owner_type'] === 'lab') {
             $this->replaceWithLabDocuments($standard->clauses);
+        }
+
+        // ✅ STEP 2: Filter only assigned data
+        if ($request->type === 'bysingle') {
+            $this->filterByUserAssignments($standard->clauses, $clauseIds, $documentIds);
         }
 
         return response()->json($standard);
@@ -169,20 +220,44 @@ class ClauseDocumentLinkController extends Controller
             $newDocs = [];
 
             foreach ($clause->documents as $doc) {
-
                 if ($doc->labVersion) {
-                    $newDocs[] = $doc->labVersion; // ✅ only lab doc
+                    $newDocs[] = $doc->labVersion;
                 } else {
-                    $newDocs[] = $doc; // fallback
+                    $newDocs[] = $doc;
                 }
             }
 
-            // ✅ FORCE replace (important)
             $clause->setRelation('documents', collect($newDocs));
 
-            // ✅ recursive children
             if ($clause->children && $clause->children->count()) {
                 $this->replaceWithLabDocuments($clause->children);
+            }
+        }
+    }
+
+    /**
+     * ✅ Filter clauses & documents based on logged-in user assignment
+     */
+    private function filterByUserAssignments($clauses, $clauseIds, $documentIds)
+    {
+        foreach ($clauses as $key => $clause) {
+
+            // ❌ Remove clause if not assigned
+            if (!$clauseIds->contains($clause->id)) {
+                unset($clauses[$key]);
+                continue;
+            }
+
+            // ✅ Filter documents inside clause
+            $filteredDocs = $clause->documents->filter(function ($doc) use ($documentIds) {
+                return $documentIds->contains($doc->id);
+            });
+
+            $clause->setRelation('documents', $filteredDocs->values());
+
+            // ✅ Recursive for children
+            if ($clause->children && $clause->children->count()) {
+                $this->filterByUserAssignments($clause->children, $clauseIds, $documentIds);
             }
         }
     }

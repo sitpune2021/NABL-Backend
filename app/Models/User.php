@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
-use App\Models\UserLocationDepartmentRole;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Role;
@@ -56,25 +55,10 @@ class User extends Authenticatable implements JWTSubject
             'password' => 'hashed',
         ];
     }
-    
-    public function assignments()
-    {
-        return $this->hasMany(UserLocationDepartmentRole::class);
-    }
 
     public function userAssignments()
     {
         return $this->hasMany(UserAssignment::class);
-    }
-
-     public function uldr()
-    {
-        return $this->hasMany(UserLocationDepartmentRole::class);
-    }
-
-    public function customPermissions()
-    {
-        return $this->hasMany(UserCustomPermission::class, 'user_location_department_role_id', 'id');
     }
 
     public function getJWTIdentifier()
@@ -108,11 +92,10 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsToMany(Lab::class, 'lab_users');
     }
 
-    public function labUser()
-    {
-        return $this->hasOne(LabUser::class, 'user_id')
-                    ->with('lab');
-    }
+    // public function labUser()
+    // {
+    //     return $this->hasOne(LabUser::class, 'user_id')->with('lab');
+    // }
 
     public function userAssignmentsWithRelations()
     {
@@ -132,6 +115,10 @@ class User extends Authenticatable implements JWTSubject
             )->with('permissions');
     }
 
+    public function labUsers()
+    {
+        return $this->hasMany(LabUser::class);
+    }
 
 
     

@@ -31,7 +31,7 @@ class NavigationItemController extends Controller
         $role = $user->roles()->first(); // or by role name
         $permissions =  $role->permissions->pluck('name')
             ->filter(function ($perm) {
-                return str_ends_with($perm, '.list');
+                return str_ends_with($perm, '.index');
             })
             ->push('home')
             ->toArray();

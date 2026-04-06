@@ -20,7 +20,7 @@ class LocationController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Location::with(['cluster', 'cluster.zone'])
+            $query = Location::with(['cluster', 'cluster.zone', 'departments.department'])
                 ->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
@@ -82,10 +82,44 @@ class LocationController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $locations = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            
+            $data = collect($locations->items())->map(function ($location) {
+
+                $locationArray = $location->toArray();
+
+                $locationArray['departments'] = collect($location->departments)->map(function ($ld) {
+
+                    $deptArray = $ld->toArray();
+
+                    // ❌ remove accesses
+                    unset($deptArray['accesses']);
+
+                    // ✅ move users INSIDE department
+                    if ($ld->department) {
+
+                        $deptArray['department']['users'] = $ld->accesses->map(function ($access) {
+
+                            return [
+                                'id' => $access->id,
+                                'user' => optional($access->labUser)->user,
+                                'role' => $access->role,
+                            ];
+
+                        })
+                        ->filter(fn($u) => $u['user'] !== null)
+                        ->values();
+                    }
+
+                    return $deptArray;
+
+                })->values();
+
+                return $locationArray;
+            });
 
             return response()->json([
                 'success' => true,
-                'data' => $locations->items(),
+                'data' => $data,
                 'total' => $locations->total()
             ], 200);
         } catch (Exception $e) {

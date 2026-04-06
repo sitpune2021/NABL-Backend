@@ -24,10 +24,10 @@ return [
     "meta"=> [],
     "subMenu"=> [
       [
-        "key"=> "masters.category.list",
+        "key"=> "masters.category.index",
         "path"=> "/masters/category/list",
         "title"=> "Category",
-        "translateKey"=> "nav.mastersCategory.list",
+        "translateKey"=> "nav.mastersCategory.index",
         "icon"=> "documentation",
         "type"=> "item",
         "for"=> "both",
@@ -41,10 +41,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.subcategory.list",
+        "key"=> "masters.subcategory.index",
         "path"=> "/masters/subcategory/list",
         "title"=> "Sub Category",
-        "translateKey"=> "nav.mastersSubCategory.list",
+        "translateKey"=> "nav.mastersSubCategory.index",
         "icon"=> "products",
         "type"=> "item",
         "for"=> "both",
@@ -58,10 +58,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.department.list",
+        "key"=> "masters.department.index",
         "path"=> "/masters/department/list",
         "title"=> "Department",
-        "translateKey"=> "nav.mastersDepartment.list",
+        "translateKey"=> "nav.mastersDepartment.index",
         "icon"=> "utilsDoc",
         "type"=> "item",
         "for"=> "both",
@@ -75,10 +75,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.unit.list",
+        "key"=> "masters.unit.index",
         "path"=> "/masters/unit/list",
         "title"=> "Unit",
-        "translateKey"=> "nav.mastersUnit.list",
+        "translateKey"=> "nav.mastersUnit.index",
         "icon"=> "uiFormsSelect",
         "type"=> "item",
         "for"=> "both",
@@ -92,10 +92,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.template.list",
+        "key"=> "masters.template.index",
         "path"=> "/masters/template/list",
         "title"=> "Template",
-        "translateKey"=> "nav.mastersTemplate.list",
+        "translateKey"=> "nav.mastersTemplate.index",
         "icon"=> "uiComponents",
         "type"=> "item",
         "for"=> "both",
@@ -109,10 +109,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.document.list",
+        "key"=> "masters.document.index",
         "path"=> "/masters/document/list",
         "title"=> "Document",
-        "translateKey"=> "nav.mastersDocument.list",
+        "translateKey"=> "nav.mastersDocument.index",
         "icon"=> "dataDisplay",
         "type"=> "item",
         "for"=> "both",
@@ -126,10 +126,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.zone.list",
+        "key"=> "masters.zone.index",
         "path"=> "/masters/zone/list",
         "title"=> "Zone",
-        "translateKey"=> "nav.mastersZone.list",
+        "translateKey"=> "nav.mastersZone.index",
         "icon"=> "navigation",
         "type"=> "item",
         "for"=> "both",
@@ -143,10 +143,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.cluster.list",
+        "key"=> "masters.cluster.index",
         "path"=> "/masters/cluster/list",
         "title"=> "Cluster",
-        "translateKey"=> "nav.mastersCluster.list",
+        "translateKey"=> "nav.mastersCluster.index",
         "icon"=> "fileManager",
         "type"=> "item",
         "for"=> "both",
@@ -160,10 +160,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.location.list",
+        "key"=> "masters.location.index",
         "path"=> "/masters/location/list",
         "title"=> "Location",
-        "translateKey"=> "nav.mastersLocation.list",
+        "translateKey"=> "nav.mastersLocation.index",
         "icon"=> "uiGraphMaps",
         "type"=> "item",
         "for"=> "both",
@@ -177,10 +177,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "masters.instrument.list",
+        "key"=> "masters.instrument.index",
         "path"=> "/masters/instrument/list",
         "title"=> "Instrument",
-        "translateKey"=> "nav.mastersInstrument.list",
+        "translateKey"=> "nav.mastersInstrument.index",
         "icon"=> "documentation",
         "type"=> "item",
         "for"=> "both",
@@ -222,7 +222,7 @@ return [
         ],
         "subMenu"=> [
           [  
-            "key"=> 'clients.lab.list',
+            "key"=> 'clients.lab.index',
             "path"=> "/clients/lab/list",
             "title"=> 'Labs',
                         "translateKey"=> 'nav.clientsLab.List',
@@ -238,7 +238,7 @@ return [
                         "subMenu" => [],
         ],
            [  
-              "key"=> "clients.lab.assignments.list",
+              "key"=> "clients.lab.assignments.index",
         "path"=> "/clients/lab-assignments/list",
             "title"=> 'Labs Assignments',
                         "translateKey"=> 'nav.clientsLab.List',
@@ -269,10 +269,27 @@ return [
     "meta"=> [],
     "subMenu"=> [
        [
-          "key"=> "works.tasks.list",
-          "path"=> "/works/tasks/list",
-          "title"=> "Tasks",
-          "translateKey"=> "nav.worksTasks.list",
+          "key"=> "works.tasks.assign.index",
+          "path"=> "/works/tasks/assign/list",
+          "title"=> "Tasks Assign",
+          "translateKey"=> "nav.worksTasks.index",
+          "icon"=> "documentation",
+          "type"=> "item",
+          "for"=> "lab",
+          "authority"=> [],
+          "meta"=> [
+            "description"=> [
+              "translateKey"=> "nav.worksTasks.listDesc",
+              "label"=> "AI-powered chat systems"
+            ]
+          ],
+          "subMenu"=> []
+       ],
+       [
+          "key"=> "works.tasks.entry.index",
+          "path"=> "/works/tasks/entry/list",
+          "title"=> "Assign Tasks",
+          "translateKey"=> "nav.worksTasks.index",
           "icon"=> "documentation",
           "type"=> "item",
           "for"=> "lab",
@@ -299,10 +316,10 @@ return [
     "meta"=> [],
     "subMenu"=> [
        [
-          "key"=> "review.review.list",
+          "key"=> "review.review.index",
           "path"=> "/review/review/list",
           "title"=> "Data Review",
-          "translateKey"=> "nav.reviewReview.list",
+          "translateKey"=> "nav.reviewReview.index",
           "icon"=> "documentation",
           "type"=> "item",
           "for"=> "lab",
@@ -329,10 +346,10 @@ return [
     "meta"=> [],
     "subMenu"=> [
       [
-        "key"=> "settings.rolesPermission.list",
+        "key"=> "settings.rolesPermission.index",
         "path"=> "/settings/roles-permission/list",
         "title"=> "Roles & Permission",
-        "translateKey"=> "nav.settingsRoles.list",
+        "translateKey"=> "nav.settingsRoles.index",
         "icon"=> "accountRoleAndPermission",
         "type"=> "item",
         "for"=> "both",
@@ -346,10 +363,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "settings.user.list",
+        "key"=> "settings.user.index",
         "path"=> "/settings/user/list",
         "title"=> "User",
-        "translateKey"=> "nav.settingsUser.list",
+        "translateKey"=> "nav.settingsUser.index",
         "icon"=> "account",
         "type"=> "item",
         "for"=> "both",
@@ -363,10 +380,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "settings.standard.list",
+        "key"=> "settings.standard.index",
         "path"=> "/settings/standard/list",
         "title"=> "Standards",
-        "translateKey"=> "nav.settingsClauses.list",
+        "translateKey"=> "nav.settingsClauses.index",
         "icon"=> "helpCeterEditArticle",
         "type"=> "item",
         "for"=> "both",
@@ -380,7 +397,7 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "settings.account.list",
+        "key"=> "settings.account.index",
         "path"=> "/settings/account/profile",
         "title"=> "Account",
         "translateKey"=> "nav.settingsAccount",
@@ -397,10 +414,10 @@ return [
         "subMenu"=> []
       ],
       [
-        "key"=> "settings.menu.list",
+        "key"=> "settings.menu.index",
         "path"=> "/settings/menu/list",
         "title"=> "Menu",
-        "translateKey"=> "nav.settingsMenu.list",
+        "translateKey"=> "nav.settingsMenu.index",
         "icon"=> "groupMenu",
         "type"=> "item",
         "for"=> "master",

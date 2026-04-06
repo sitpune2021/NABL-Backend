@@ -6,14 +6,13 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use App\Models\UserCustomPermission;
 use App\Http\Requests\StoreUserRequest;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Str;
-use App\Models\{Lab, Location, LabLocationDepartment, LabUser, Contact, User, UserLocationDepartmentRole};
+use App\Models\{Lab, Location, LabLocationDepartment, LabUser, Contact, User, LabUserAccess};
 use Spatie\Permission\PermissionRegistrar;
 
 class UserController extends Controller
@@ -30,11 +29,11 @@ class UserController extends Controller
             $ctx = $this->labContext($request);
 
             $query = User::with([
-                'assignments.location',
-                'assignments.department',
-                'assignments.role',
-                'assignments.customPermissions.permission'
+                'labUsers.accesses.role',
+                'labUsers.accesses.location',
+                'labUsers.accesses.department.department',
             ])->where('id', '!=', $currentUser->id);
+            
 
             if ($ctx['lab_id'] != 0) {
                 // Filter users by the same lab
@@ -85,26 +84,50 @@ class UserController extends Controller
 
             // Transform to location → department → role structure
             $data = $users->map(function ($user) {
-                $locations = $user->assignments->groupBy('location_id')->map(function ($locationAssignments) {
-                    $location = $locationAssignments->first()->location;
-                    $departments = $locationAssignments->groupBy('department_id')->map(function ($deptAssignments) {
-                        $department = $deptAssignments->first()->department;
-                        $roles = $deptAssignments->map(function ($uldr) {
+                $accesses = $user->labUsers->flatMap->accesses;
+
+                $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
+
+                    $location = optional($locationAccesses->first()->location);
+
+                    // ✅ 1. LOCATION LEVEL ROLES (department_id = null)
+                    $locationRoles = $locationAccesses
+                        ->whereNull('lab_location_department_id')
+                        ->map(function ($access) {
                             return [
-                                'id' => $uldr->role->id,
-                                'name' => $uldr->role->name,
-                                'permissions' => $uldr->customPermissions->pluck('permission.name')->toArray(),
+                                'id' => $access->role->id,
+                                'name' => $access->role->name,
                             ];
-                        })->values();
-                        return [
-                            'id' => $department->id,
-                            'name' => $department->name,
-                            'roles' => $roles
-                        ];
-                    })->values();
+                        })
+                        ->values();
+
+                    // ✅ 2. DEPARTMENT LEVEL ROLES
+                    $departments = $locationAccesses
+                        ->whereNotNull('lab_location_department_id')
+                        ->groupBy('lab_location_department_id')
+                        ->map(function ($deptAccesses) {
+
+                            $department = optional($deptAccesses->first()->department);
+
+                            $roles = $deptAccesses->map(function ($access) {
+                                return [
+                                    'id' => $access->role->id,
+                                    'name' => $access->role->name,
+                                ];
+                            })->values();
+
+                            return [
+                                'id' => $department?->id,
+                                'name' => $department?->department?->name,
+                                'roles' => $roles
+                            ];
+                        })
+                        ->values();
+
                     return [
-                        'id' => $location->id,
-                        'name' => $location->name,
+                        'id' => $location?->id,
+                        'name' => $location?->name,
+                        'roles' => $locationRoles,
                         'departments' => $departments
                     ];
                 })->values();
@@ -158,6 +181,7 @@ class UserController extends Controller
                 'is_super_admin' => false,
             ]);
 
+
             $ctx = $this->labContext($request);
 
             app(PermissionRegistrar::class)->setPermissionsTeamId($ctx['owner_id']); // MASTER
@@ -173,6 +197,13 @@ class UserController extends Controller
                 $user->syncPermissions($permissions);
             }
 
+            if ($ctx['lab_id'] != 0) {
+              $labuser =   LabUser::create([
+                    'user_id' => $user->id,
+                    'lab_id'  => $ctx['lab_id'],
+                ]);
+            }
+
             // 2️⃣ Assign roles
             foreach ($request->userRoles as $roleBlock) {
                 foreach ($roleBlock['department'] as $deptBlock) {
@@ -186,24 +217,21 @@ class UserController extends Controller
                         $permissions = $role->permissions->pluck('name')->toArray();
                         $user->syncPermissions($permissions);
 
-                        $uldr = UserLocationDepartmentRole::create([
-                            'user_id'       => $user->id,
-                            'location_id'   => $roleBlock['location_id'],
-                            'department_id' => $deptBlock['department_id'],
-                            'role_id'       => $role->id,
-                            'status'        => 'active',
-                            'position_type' => 'permanent',
-                        ]);
+                        $lab_location_department =   LabLocationDepartment::firstOrCreate([
+                                'location_id' =>$roleBlock['location_id'],
+                                'department_id' => $deptBlock['department_id'] ?? null,
+                            ]);
 
+                        LabUserAccess::create([
+                        'lab_user_id' => $labuser->id,
+                        'location_id' => $roleBlock['location_id'] ,
+                        'lab_location_department_id' => $lab_location_department->id,
+                        'role_id' => $role->id,
+                        'status' => 'active',
+                        'granted_at' => now(),
+                    ]);
                     }
                 }
-            }
-
-            if ($ctx['lab_id'] != 0) {
-                LabUser::create([
-                    'user_id' => $user->id,
-                    'lab_id'  => $ctx['lab_id'],
-                ]);
             }
 
             DB::commit();
