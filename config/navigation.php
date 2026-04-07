@@ -4,7 +4,7 @@ return [
   [
     "key"=> "home",
     "path"=> "/home",
-    "title"=> "Home",
+    "title"=> "Dashboard",
     "translateKey"=> "nav.home",
     "icon"=> "home",
     "type"=> "item",
