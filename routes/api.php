@@ -186,8 +186,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('sync-master', [LocationController::class, 'labMasterLocations']);
             Route::post('append-to-master', [LocationController::class, 'appendLabLocationToMaster']);
-            Route::get('pending', [LocationController::class, 'pendingLocations']);
-            Route::post('approve', [LocationController::class, 'approveLocations']);
+            Route::get('pending', [LocationController::class, 'pending']);
+            Route::post('approve', [LocationController::class, 'approve']);
         });
         Route::apiResource('locations', LocationController::class);
 
