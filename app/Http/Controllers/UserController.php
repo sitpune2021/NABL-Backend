@@ -33,7 +33,7 @@ class UserController extends Controller
                 'labUsers.accesses.location',
                 'labUsers.accesses.department.department',
             ])->where('id', '!=', $currentUser->id);
-            
+
 
             if ($ctx['lab_id'] != 0) {
                 // Filter users by the same lab
@@ -258,7 +258,7 @@ class UserController extends Controller
     public function show($id)
     {
         $user = User::with([
-            'assignments' => function ($q) {
+            'userAssignments' => function ($q) {
                 $q->with([
                     'location',
                     'department',
@@ -271,19 +271,19 @@ class UserController extends Controller
         if (!$user) {
             return response()->json(['message' => 'User not found'], 404);
         }
-        
+
         $role = $user->roles->first(); // Spatie role
 
-        $userRoles = $user->assignments->groupBy(function($assignment) {
+        $userRoles = $user->userAssignments->groupBy(function($assignment) {
             return $assignment->location_id;
-        })->map(function($assignmentsGroup) {
+        })->map(function($userAssignmentsGroup) {
 
-            $first = $assignmentsGroup->first();
+            $first = $userAssignmentsGroup->first();
             $zone_id     = $first->location->cluster->zone->id;
             $cluster_id  = $first->location->cluster->id;
             $location_id = $first->location_id;
 
-            $departments = $assignmentsGroup->map(function($uldr) {
+            $departments = $userAssignmentsGroup->map(function($uldr) {
                 $roles = [
                     [
                         'value' => $uldr->role->id,
