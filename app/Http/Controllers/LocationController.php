@@ -32,6 +32,10 @@ class LocationController extends Controller
                 }
             }
 
+            if ($request->cluster_id) {
+                $query->where('cluster_id', $request->cluster_id);
+            }
+
             // Search
             if ($request->filled('query')) {
                 $search = strtolower($request->input('query'));

@@ -176,4 +176,9 @@ class Location extends Model
     {
         return $this->hasMany(LabLocationDepartment::class);
     }
+
+    public function instruments()
+    {
+        return $this->hasMany(LabInstrumentAssignment::class)->whereNull('lab_location_department_id');
+    }
 }

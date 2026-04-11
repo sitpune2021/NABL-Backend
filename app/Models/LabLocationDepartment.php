@@ -25,4 +25,9 @@ class LabLocationDepartment extends Model
         return $this->hasMany(LabUserAccess::class, 'lab_location_department_id');
     }
 
+    public function instruments()
+    {
+        return $this->hasMany(LabInstrumentAssignment::class, );
+    }
+
 }
