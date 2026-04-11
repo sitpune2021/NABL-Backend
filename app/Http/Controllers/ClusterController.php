@@ -28,6 +28,10 @@ class ClusterController extends Controller
                 $query->forLab($ctx['lab_id']);
             }
 
+            if ($request->zone_id) {
+                $query->where('zone_id', $request->zone_id);
+            }
+
             // Search
             if ($request->filled('query')) {
                 $search = strtolower($request->input('query'));

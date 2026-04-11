@@ -8,7 +8,6 @@ use Illuminate\Support\Str;
 use App\Models\Standard;
 use App\Models\LabUser;
 use App\Models\Clause;
-use App\Models\ClauseDocumentLink;
 
 class StandardController extends Controller
 {
@@ -233,17 +232,45 @@ class StandardController extends Controller
     public function currentStandards(Request $request)
     {
         $standardId = $request->standard_id;
-        $standards = Standard::with([
-            'clauses.documents' ,// eager load clauses and related documents
-            'clauses.children'          // recursive children will load documents via children() relation
 
-        ])->when($standardId, function ($q) use ($standardId) {
-            $q->where('id', $standardId);
-        })->first();
+        $ctx = $this->labContext($request);
+
+        $ownerType = $ctx['owner_type'];
+        $ownerId   = $ctx['owner_id'];
+
+        $standards = Standard::with([
+            'clauses' => function ($q) use ($ownerType, $ownerId) {
+                $q->whereNull('parent_id')
+                ->orderBy('sort_order')
+                ->with($this->clauseWithRelations($ownerType, $ownerId));
+            }
+        ])
+        ->when($standardId, fn ($q) => $q->where('id', $standardId))
+        ->first();
 
         return response()->json([
             'success' => true,
             'data' => $standards
         ]);
+    }
+
+    private function clauseWithRelations($ownerType, $ownerId)
+    {
+        return [
+            'documentLinks' => function ($q) use ($ownerType, $ownerId) {
+
+                if ($ownerType === 'super_admin') {
+                    $q->superAdmin();
+                } else {
+                    $q->forLab($ownerId);
+                }
+                $q->with('document');
+            },
+
+            'children' => function ($q) use ($ownerType, $ownerId) {
+                $q->orderBy('sort_order')
+                ->with($this->clauseWithRelations($ownerType, $ownerId)); // 🔁 RECURSION
+            }
+        ];
     }
 }

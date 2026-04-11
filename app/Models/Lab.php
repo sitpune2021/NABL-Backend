@@ -15,7 +15,8 @@ class Lab extends Model
         'lab_code',
         'location_limit',
         'user_limit',
-        'created_by'
+        'created_by',
+        'standard_id'
     ];
 
     public function users()
@@ -46,6 +47,11 @@ class Lab extends Model
     public function location()
     {
         return $this->hasMany(Location::class, 'owner_id');
+    }
+
+    public function labClauseDocuments()
+    {
+        return $this->hasMany(ClauseDocumentLink::class, 'owner_id')->where('owner_type', 'lab');
     }
 
 }

@@ -30,7 +30,7 @@ class Clause extends Model
 
     public function children()
     {
-        return $this->hasMany(Clause::class, 'parent_id')->orderBy('sort_order')->with(['documents.currentVersion', 'children']);
+        return $this->hasMany(Clause::class, 'parent_id')->orderBy('sort_order')->with(['documentLinks.document', 'children']);
     }
 
     public function documents()

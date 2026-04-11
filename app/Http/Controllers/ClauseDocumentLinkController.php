@@ -10,6 +10,8 @@ use App\Models\ClauseDocumentLink;
 use App\Models\Standard;
 use App\Models\Clause;
 use App\Models\Assignment;
+use Illuminate\Support\Facades\Validator;
+use App\Models\Document;
 
 class ClauseDocumentLinkController extends Controller
 {
@@ -27,13 +29,13 @@ class ClauseDocumentLinkController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate([
-            'standard_id' => 'required|exists:standards,id',
-            'standard_clauses' => 'required|array',
-            'standard_clauses.*.clause_id' => 'required|exists:clauses,id',
-            'standard_clauses.*.clause_documents_tagging' => 'nullable|array',
-            'standard_clauses.*.notes' => 'nullable|string',
-        ]);
+        $validator = $this->validateStandardClauses($request);
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         DB::beginTransaction();
 
@@ -186,6 +188,7 @@ class ClauseDocumentLinkController extends Controller
 
         return response()->json($standard);
     }
+
     private function loadRecursiveRelations($clauses, $ctx)
     {
         foreach ($clauses as $clause) {
@@ -267,13 +270,14 @@ class ClauseDocumentLinkController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        $request->validate([
-            'standard_id' => 'required|exists:standards,id',
-            'standard_clauses' => 'required|array',
-            'standard_clauses.*.clause_id' => 'required|exists:clauses,id',
-            'standard_clauses.*.clause_documents_tagging' => 'nullable|array',
-            'standard_clauses.*.notes' => 'nullable|string',
-        ]);
+        $validator = $this->validateStandardClauses($request);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         DB::beginTransaction();
 
@@ -345,5 +349,59 @@ class ClauseDocumentLinkController extends Controller
     public function destroy(string $id)
     {
         //
+    }
+
+    private function validateStandardClauses(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'standard_id' => ['required', 'exists:standards,id'],
+            'standard_clauses' => ['required', 'array'],
+            'standard_clauses.*.clause_id' => ['required', 'exists:clauses,id'],
+            'standard_clauses.*.clause_documents_tagging' => ['nullable', 'array'],
+            'standard_clauses.*.notes' => ['nullable', 'string'],
+        ]);
+
+        $validator->after(function ($validator) use ($request) {
+
+            $clausesData = collect($request->standard_clauses);
+
+            $clauseIds = $clausesData->pluck('clause_id')->filter()->unique();
+
+            $documentIds = $clausesData
+                ->pluck('clause_documents_tagging')
+                ->flatten(1)
+                ->pluck('documents.id')
+                ->filter()
+                ->unique();
+
+            $clauses = Clause::whereIn('id', $clauseIds)->pluck('title', 'id');
+            $documents = Document::whereIn('id', $documentIds)->pluck('name', 'id');
+
+            foreach ($clausesData as $index => $clause) {
+                $clauseId = $clause['clause_id'] ?? null;
+                $clauseName = $clauses[$clauseId] ?? 'Unknown Clause';
+
+                $seenDocs = [];
+
+                foreach ($clause['clause_documents_tagging'] ?? [] as $docIndex => $doc) {
+                    $docId = $doc['documents']['id'] ?? null;
+
+                    if (!$docId) continue;
+
+                    if (isset($seenDocs[$docId])) {
+                        $docName = $documents[$docId] ?? 'Unknown Document';
+
+                        $validator->errors()->add(
+                            "standard_clauses.$index.clause_documents_tagging.$docIndex",
+                            "Duplicate document \"{$docName}\" in clause: {$clauseName}"
+                        );
+                    }
+
+                    $seenDocs[$docId] = true;
+                }
+            }
+        });
+
+        return $validator;
     }
 }

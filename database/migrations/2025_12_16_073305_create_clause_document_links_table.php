@@ -13,20 +13,15 @@ return new class extends Migration
     {
         Schema::create('clause_document_links', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('standard_id');
-            $table->unsignedBigInteger('clause_id');
-            $table->unsignedBigInteger('document_id');
-            $table->unsignedBigInteger('document_version_id')->nullable();
+            $table->foreignId('standard_id')->constrained('standards')->nullOnDelete()->comment('master category id if this is a lab override');
+            $table->foreignId('clause_id')->constrained('clauses')->nullOnDelete()->comment('master category id if this is a lab override');
+            $table->foreignId('document_id')->constrained('documents')->nullOnDelete()->comment('master category id if this is a lab override');
+            $table->foreignId('document_version_id')->nullable()->constrained('document_versions')->nullOnDelete()->comment('master category id if this is a lab override');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
             $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
             
             $table->timestamps();
-
-            $table->foreign('standard_id')->references('id')->on('standards')->onDelete('cascade');
-            $table->foreign('clause_id')->references('id')->on('clauses')->onDelete('cascade');
-            $table->foreign('document_id')->references('id')->on('documents')->onDelete('cascade');
-            $table->foreign('document_version_id')->references('id')->on('document_versions')->onDelete('cascade');
         });
     }
 

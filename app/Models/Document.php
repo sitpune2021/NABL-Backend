@@ -45,11 +45,6 @@ class Document extends Model
         return $this->hasMany(DocumentHistory::class);
     }
 
-      public function clauseLinks()
-    {
-        return $this->hasMany(ClauseDocumentLink::class, 'document_id', 'id');
-    }
-
     public function setAsCurrentVersion(DocumentVersion $version)
     {
         $this->versions()->update(['is_current' => false]);
