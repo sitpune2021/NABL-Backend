@@ -203,7 +203,6 @@ Route::prefix('v1')->group(function () {
         | Standards & Clauses
         |--------------------------------------------------------------------------
         */
-        Route::get('standards/current', [StandardController::class, 'currentStandards']);
         Route::apiResource('standards', StandardController::class);
         Route::apiResource('clauses', ClauseDocumentLinkController::class);
 

@@ -541,7 +541,8 @@ class LabController extends Controller
 
                     if ($labPrimaryEmail || $labPrimaryPhone) {
                         if($labEmailUserId['user_id'] == $lanPhoneUserId['user_id']){
-                            $userAdmin =   user::find($labEmailUserId['user_id'] || $lanPhoneUserId['user_id']);
+                            $userId = $labEmailUserId['user_id'] ?? $lanPhoneUserId['user_id'];
+                            $userAdmin = User::find($userId);
                             $userAdmin->update([
                                 'email' => $labPrimaryEmail['value'] ?? null,
                                 'dial_code' => $labPrimaryPhone['value'] ? '+91' : null,

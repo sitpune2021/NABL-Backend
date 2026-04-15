@@ -14,6 +14,8 @@ class Standard extends Model
         'changes_type','status','is_current','created_by'
     ];
 
+    protected $appends = ['is_document_link'];
+
     public function drafts() {
         return $this->hasMany(DraftSession::class);
     }
@@ -30,7 +32,7 @@ class Standard extends Model
 
     public function clauseDocumentLinks()
     {
-        return $this->hasMany(ClauseDocumentLink::class, 'standard_id', 'id');
+        return $this->hasMany(ClauseDocumentLink::class, 'standard_id');
     }
 
     // Scope to get current standards
@@ -38,4 +40,10 @@ class Standard extends Model
     {
         return $query->where('is_current', true);
     }
+    
+    public function getIsDocumentLinkAttribute(): bool
+    {
+        return $this->clauseDocumentLinks()->exists();
+    }
+
 }

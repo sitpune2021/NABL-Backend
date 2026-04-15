@@ -30,6 +30,9 @@ class ClauseDocumentLinkController extends Controller
     public function store(Request $request)
     {
         $validator = $this->validateStandardClauses($request);
+        $ctx = $this->labContext($request);
+        $ownerType = $ctx['owner_type'];
+        $ownerId   = $ctx['owner_id'];
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
@@ -59,6 +62,9 @@ class ClauseDocumentLinkController extends Controller
                             'clause_id' => $clause_id,
                             'document_id' => $doc['documents']['id'],
                             'document_version_id' => $doc['documents']['version_id'] ?? null,
+                                    'owner_type' => $ownerType,
+                                'owner_id' => $ownerId,
+
                         ];
                     }
                 }
@@ -99,10 +105,8 @@ class ClauseDocumentLinkController extends Controller
     {
         $ctx = $this->labContext($request);
 
-        $with = [
-            'clauses.children'
-        ];
-
+        $ownerType = $ctx['owner_type'];
+        $ownerId   = $ctx['owner_id'];
         // ✅ STEP 1: Get user assigned tasks (only if bysingle)
         $clauseIds = collect();
         $documentIds = collect();
@@ -147,95 +151,21 @@ class ClauseDocumentLinkController extends Controller
             $documentIds = $tasks->pluck('document_id')->unique();
         }
 
-        // ✅ LAB CONTEXT
-        if ($ctx['owner_type'] === 'lab') {
-
-            $with['clauses.documents.labVersion'] = function ($q) use ($ctx) {
-                $q->where('owner_id', $ctx['owner_id']);
-            };
-
-            $with['clauses.documents.labVersion.currentVersion'] = function ($q) {
-                $q->where('is_current', true);
-            };
-
-            $with['clauses.children.documents.labVersion'] = function ($q) use ($ctx) {
-                $q->where('owner_id', $ctx['owner_id']);
-            };
-
-            $with['clauses.children.documents.labVersion.currentVersion'] = function ($q) {
-                $q->where('is_current', true);
-            };
-
-        } else {
-
-            // ✅ NORMAL (super_admin)
-            $with[] = 'clauses.documents.currentVersion';
-            $with[] = 'clauses.children.documents.currentVersion';
-        }
-
-        $standard = Standard::with($with)->findOrFail($id);
-        $this->loadRecursiveRelations($standard->clauses, $ctx);
-
-        // ✅ IMPORTANT: Replace documents with lab version
-        if ($ctx['owner_type'] === 'lab') {
-            $this->replaceWithLabDocuments($standard->clauses);
-        }
+        $standard = Standard::with([
+                'clauses' => function ($q) use ($ownerType, $ownerId) {
+                    $q->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with($this->clauseWithRelations($ownerType, $ownerId));
+                }
+            ])->findOrFail($id);
 
         // ✅ STEP 2: Filter only assigned data
         if ($request->type === 'bysingle') {
             $this->filterByUserAssignments($standard->clauses, $clauseIds, $documentIds);
         }
+    
 
         return response()->json($standard);
-    }
-
-    private function loadRecursiveRelations($clauses, $ctx)
-    {
-        foreach ($clauses as $clause) {
-
-            if ($ctx['owner_type'] === 'lab') {
-
-                $clause->load([
-                    'documents.labVersion' => function ($q) use ($ctx) {
-                        $q->where('owner_id', $ctx['owner_id']);
-                    },
-                    'documents.labVersion.currentVersion' => function ($q) {
-                        $q->where('is_current', true);
-                    }
-                ]);
-            } else {
-
-                $clause->load('documents.currentVersion');
-            }
-
-            $clause->load('children');
-
-            if ($clause->children && $clause->children->count()) {
-                $this->loadRecursiveRelations($clause->children, $ctx);
-            }
-        }
-    }
-
-    private function replaceWithLabDocuments($clauses)
-    {
-        foreach ($clauses as $clause) {
-
-            $newDocs = [];
-
-            foreach ($clause->documents as $doc) {
-                if ($doc->labVersion) {
-                    $newDocs[] = $doc->labVersion;
-                } else {
-                    $newDocs[] = $doc;
-                }
-            }
-
-            $clause->setRelation('documents', collect($newDocs));
-
-            if ($clause->children && $clause->children->count()) {
-                $this->replaceWithLabDocuments($clause->children);
-            }
-        }
     }
 
     /**
@@ -265,12 +195,32 @@ class ClauseDocumentLinkController extends Controller
         }
     }
 
+    private function clauseWithRelations($ownerType, $ownerId)
+    {
+        return [
+            'documentLinks' => function ($q) use ($ownerType, $ownerId) {
+                if ($ownerType === 'super_admin') {
+                    $q->superAdmin();
+                } else {
+                    $q->forLab($ownerId);
+                }
+                $q->with('document.currentVersion');
+            },
+
+            'children' => function ($q) use ($ownerType, $ownerId) {
+                $q->orderBy('sort_order')
+                ->with($this->clauseWithRelations($ownerType, $ownerId)); // 🔁 RECURSION
+            }
+        ];
+    }
+
     /**
      * Update the specified resource in storage.
      */
     public function update(Request $request, string $id)
     {
         $validator = $this->validateStandardClauses($request);
+        dd($request->all());
 
         if ($validator->fails()) {
             return response()->json([
@@ -278,6 +228,9 @@ class ClauseDocumentLinkController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+            $ctx = $this->labContext($request);
+            $ownerType = $ctx['owner_type'];
+            $ownerId   = $ctx['owner_id'];
 
         DB::beginTransaction();
 
@@ -308,8 +261,9 @@ class ClauseDocumentLinkController extends Controller
                             'standard_id' => $id,
                             'clause_id' => $clauseId,
                             'document_id' => $doc['documents']['id'],
-                            'document_version_id' =>
-                                $doc['documents']['version_id'] ?? null,
+                            'document_version_id' => $doc['documents']['version_id'] ?? null,
+                            'owner_type' => $ownerType,
+                            'owner_id' => $ownerId,
                             'created_at' => now(),
                             'updated_at' => now(),
                         ];
