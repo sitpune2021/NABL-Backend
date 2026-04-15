@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use App\Models\Standard;
 use App\Models\LabUser;
 use App\Models\Clause;
+use App\Models\Lab;
 
 class StandardController extends Controller
 {
@@ -18,21 +19,19 @@ class StandardController extends Controller
     {
         try {
             $user = auth()->user();
-            $labUser = LabUser::where('user_id', $user->id)->first();
-            // Base query with eager loading of top-level clauses and their children
-            $query = Standard::with(['clauses.children'])->withExists([
-                'clauseDocumentLinks as is_document_link'
+            $ctx = $this->labContext($request);
+            $ownerType = $ctx['owner_type'];
+            $ownerId   = $ctx['owner_id'];
+            $query = Standard::with([
+                'clauses' => function ($q) use ($ownerType, $ownerId) {
+                    $q->whereNull('parent_id')
+                    ->orderBy('sort_order')
+                    ->with($this->clauseWithRelations($ownerType, $ownerId));
+                }
             ]);
 
-            // Lab-based filter: only standards linked to lab documents
-            if ($labUser) {
-                $query->whereHas('clauseDocumentLinks', function ($q) use ($labUser) {
-                    $q->whereIn('document_id', function ($subQuery) use ($labUser) {
-                        $subQuery->select('document_id')
-                                ->from('lab_clause_documents')
-                                ->where('lab_id', $labUser->lab_id);
-                    });
-                });
+            if ($ctx['lab_id'] != 0 && $lab = Lab::find($ownerId)) {
+                $query->where('id', $lab->standard_id);
             }
 
             // Search by name or UUID
@@ -81,9 +80,18 @@ class StandardController extends Controller
 
             $standards = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
+            $data = collect($standards->items())->map(function ($standard) use ($ownerType, $ownerId) {
+                $standard->is_document_link = $standard->clauseDocumentLinks()
+                    ->when($ownerType === 'super_admin', fn($q) => $q->superAdmin())
+                    ->when($ownerType === 'lab', fn($q) => $q->forLab($ownerId))
+                    ->exists();
+
+                return $standard;
+            });
+
             return response()->json([
                 'status' => true,
-                'data' => $standards->items(),
+                'data' => $data,
                 'total' => $standards->total()
             ], 200);
 
@@ -164,53 +172,20 @@ class StandardController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
-        return Standard::with('clauses.children')->findOrFail($id);
-    }
+          $ctx = $this->labContext($request);
 
+        $ownerType = $ctx['owner_type'];
+        $ownerId   = $ctx['owner_id'];
 
-    public function clauses(string $id)
-    {
-        $standard = Standard::with('clauses.children')->findOrFail($id);
-
-        // Map clauses for frontend form
-        $standardClauses = $this->mapClausesForForm($standard->clauses);
-
-        return response()->json([
-            'id' => $standard->id,
-            'uuid' => $standard->uuid,
-            'name' => $standard->name,
-            'version_major' => $standard->version_major,
-            'version_minor' => $standard->version_minor,
-            'status' => $standard->status,
-            'clauses' => $standardClauses,
-        ]);
-    }
-
-
-    protected function mapClausesForForm($clauses)
-    {
-        return $clauses->map(function ($clause) {
-            return [
-                'id' => $clause->id,
-                'parentId' => $clause->parent_id,
-                'notes' => '',
-                'clause_documents_tagging' => $clause->note ? [
-                    [
-                        'category_id' => '',
-                        'document' => [
-                            'id' => '',
-                            'version_id' => '',
-                            'version' => '',
-                        ],
-                    ]
-                ] : [],
-                'children' => $clause->children->isNotEmpty()
-                    ? $this->mapClausesForForm($clause->children)
-                    : [],
-            ];
-        });
+        return Standard::with([
+            'clauses' => function ($q) use ($ownerType, $ownerId) {
+                $q->whereNull('parent_id')
+                ->orderBy('sort_order')
+                ->with($this->clauseWithRelations($ownerType, $ownerId));
+            }
+        ])->findOrFail($id);
     }
 
     /**
@@ -227,31 +202,6 @@ class StandardController extends Controller
     public function destroy(string $id)
     {
         //
-    }
-
-    public function currentStandards(Request $request)
-    {
-        $standardId = $request->standard_id;
-
-        $ctx = $this->labContext($request);
-
-        $ownerType = $ctx['owner_type'];
-        $ownerId   = $ctx['owner_id'];
-
-        $standards = Standard::with([
-            'clauses' => function ($q) use ($ownerType, $ownerId) {
-                $q->whereNull('parent_id')
-                ->orderBy('sort_order')
-                ->with($this->clauseWithRelations($ownerType, $ownerId));
-            }
-        ])
-        ->when($standardId, fn ($q) => $q->where('id', $standardId))
-        ->first();
-
-        return response()->json([
-            'success' => true,
-            'data' => $standards
-        ]);
     }
 
     private function clauseWithRelations($ownerType, $ownerId)

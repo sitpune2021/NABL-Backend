@@ -20,8 +20,7 @@ class LocationController extends Controller
     {
         try {
             $ctx = $this->labContext($request);
-            $query = Location::with(['cluster', 'cluster.zone', 'departments.department'])
-                ->where('status', 'completed');
+            $query = Location::with(['cluster', 'cluster.zone', 'departments.department'])->where('status', 'completed');
 
             if ($ctx['lab_id'] == 0) {
                 $query->with('lab')->SuperAdmin();

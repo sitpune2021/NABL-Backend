@@ -88,6 +88,7 @@ class AuthProfileController extends Controller
                 return [
                     'lab_id'   => $labId,
                     'lab_name' => $group->first()->lab_name ?? 'Master',
+                    'standard_id' => $lab?->standard_id,
 
                     // ✅ KEEP YOUR EXISTING ROLE STRUCTURE
                     'roles' => $group->map(function ($role) {
