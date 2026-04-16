@@ -12,12 +12,12 @@ use Spatie\Permission\PermissionRegistrar;
 
 use App\Services\NavigationAccessService;
 
-use App\Models\{Lab, 
-    Location, 
-    LabLocationDepartment, 
-    LabUser, 
-    Contact, 
-    User, 
+use App\Models\{Lab,
+    Location,
+    LabLocationDepartment,
+    LabUser,
+    Contact,
+    User,
     Document,
     DocumentDepartment,
     DocumentVersion,
@@ -138,7 +138,7 @@ class LabController extends Controller
                 foreach ($loc['instruments'] ?? [] as $locInstrument) {
                    $this->assignInstrument($locInstrument, $lab, $labLocation->id);
                 }
-                
+
                 // Departments
                 foreach ($loc['departments'] ?? [] as $dept) {
                     $departmentOg = Department::where([
@@ -157,7 +157,7 @@ class LabController extends Controller
                     }
                 }
             }
-            
+
             if (!empty($request->documents)) {
                 foreach ($request->documents as $documentId) {
                     $originalDocument = Document::with([
@@ -549,7 +549,7 @@ class LabController extends Controller
                                 'phone' => $labPrimaryPhone['value'] ?? null,
                             ]);
                         }
-                        
+
                     }
 
                     $labIncomingInstrumentIds = collect($loc['instruments'] ?? [])
@@ -563,7 +563,7 @@ class LabController extends Controller
                     foreach ($loc['instruments'] ?? [] as $locInstrument) {
                         $this->assignInstrument($locInstrument, $lab, $labLocation->id);
                     }
-                    
+
                     // Departments
                     foreach ($loc['departments'] ?? [] as $dept) {
                         $departmentOg = Department::where([
@@ -611,7 +611,7 @@ class LabController extends Controller
                     foreach ($loc['instruments'] ?? [] as $locInstrument) {
                         $this->assignInstrument($locInstrument, $lab, $labLocation->id);
                     }
-                    
+
                     // Departments
                     foreach ($loc['departments'] ?? [] as $dept) {
                         $departmentOg = Department::where([
@@ -709,7 +709,6 @@ class LabController extends Controller
             DB::commit();
 
             return response()->json(['message' => 'Lab updated successfully', 'lab_id' => $lab->id], 200);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json(['error' => $e->getMessage()], 500);
@@ -766,19 +765,13 @@ class LabController extends Controller
             return $lab;
         });
 
-        $assignments = UserAssignment::select(
-                'user_id',
-                'lab_id',
-                'location_id'
-            )->get();
-
         $assingn= UserAssignment::get();
 
         /* ===============================
         LOCATION ASSIGNMENT
         =============================== */
 
-        $assignedLocations = $assignments
+        $assignedLocations = $assingn
             ->whereNotNull('location_id')
             ->pluck('location_id')
             ->unique()
@@ -790,7 +783,7 @@ class LabController extends Controller
         USER ASSIGNMENT
         =============================== */
 
-        $assignedUsers = $assignments
+        $assignedUsers = $assingn
             ->pluck('user_id')
             ->unique()
             ->count();
@@ -815,7 +808,7 @@ class LabController extends Controller
             }
 
             // Locations that have at least one assignment
-            $assignedLabLocations = $assignments
+            $assignedLabLocations = $assingn
                 ->where('lab_id', $lab->id)
                 ->whereNotNull('location_id')
                 ->pluck('location_id')
@@ -842,7 +835,6 @@ class LabController extends Controller
 
                 'users'   => $users,
                 'labs'    => $labs,
-                'assingn' => $assignments,
                 'assingn' => $assingn,
 
 
@@ -924,36 +916,49 @@ class LabController extends Controller
             if (!$exists) {
 
                     $user->assignRole($role);
-                    $user->syncPermissions(
-                        $role->permissions->pluck('name')->toArray()
-                    );
 
-                    UserAssignment::updateOrCreate(
+                    UserAssignment::create(
                         [
                             'user_id'     => $user->id,
                             'lab_id'      => $validated['lab_id'],
                             'location_id' => $validated['location_id'],
                             'role_id'     => $role->id,
                         ],
-                        [] // no extra fields yet
                     );
                 }
-                }
-                else{
-                    $user->removeRole($role);
-                    $user->syncPermissions(
-                        $user->getRoleNames()->flatMap(function($r) use ($validated) {
-                            return Role::where('lab_id', $validated['lab_id'])->findByName($r)->permissions->pluck('name')->toArray();
-                        })->unique()->toArray()
-                    );
-
+            }
+             else {
                     UserAssignment::where([
                         'user_id'     => $user->id,
                         'lab_id'      => $validated['lab_id'],
                         'location_id' => $validated['location_id'],
                         'role_id'     => $role->id,
                     ])->delete();
+
+                // check if role still exists anywhere
+                $stillExists = UserAssignment::where([
+                    'user_id' => $user->id,
+                    'lab_id'  => $validated['lab_id'],
+                    'role_id' => $role->id,
+                ])->exists();
+
+                if (!$stillExists) {
+                    $user->removeRole($role);
                 }
+            }
+
+            $remainingRoleIds = UserAssignment::where([
+                'user_id' => $user->id,
+                'lab_id'  => $validated['lab_id'],
+            ])->pluck('role_id');
+
+            $permissions = Role::whereIn('id', $remainingRoleIds)
+                ->get()
+                ->flatMap(fn($r) => $r->permissions->pluck('name'))
+                ->unique()
+                ->toArray();
+
+            $user->syncPermissions($permissions);
 
             return response()->json([
                 'success' => true,
@@ -962,7 +967,7 @@ class LabController extends Controller
 
         });
     }
-    
+
     protected function saveContacts($model, $emails = [], $phones = [])
     {
         foreach ($emails as $email) {
@@ -1030,7 +1035,7 @@ class LabController extends Controller
             ]
         );
     }
-    
+
     protected function assignRoleToUser($user, $lab, $level,$labAccess = false, $labLocationId = null)
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($lab->id);
