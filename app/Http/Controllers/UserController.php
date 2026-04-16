@@ -117,7 +117,7 @@ class UserController extends Controller
                             })->values();
 
                             return [
-                                'id' => $department?->id,
+                                'id' => $department?->department?->id,
                                 'name' => $department?->department?->name,
                                 'roles' => $roles
                             ];
@@ -255,70 +255,85 @@ class UserController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show($id)
+    public function show($id, Request $request)
     {
-        $user = User::with([
-            'userAssignments' => function ($q) {
-                $q->with([
-                    'location',
-                    'department',
-                    'role',
-                    'customPermissions.permission'
-                ]);
-            }
-        ])->find($id);
+        $ctx = $this->labContext($request);
+
+        $query = User::with([
+            'roles',
+            'labUsers.accesses.role',
+            'labUsers.accesses.location.cluster.zone',
+            'labUsers.accesses.department.department',
+        ]);
+
+        // ✅ Lab filter
+        if ($ctx['lab_id'] != 0) {
+            $query->whereIn('id', function ($q) use ($ctx) {
+                $q->select('user_id')
+                ->from('lab_users')
+                ->where('lab_id', $ctx['lab_id']);
+            });
+        }
+
+        $user = $query->find($id);
 
         if (!$user) {
             return response()->json(['message' => 'User not found'], 404);
         }
 
-        $role = $user->roles->first(); // Spatie role
-
-        $userRoles = $user->userAssignments->groupBy(function($assignment) {
-            return $assignment->location_id;
-        })->map(function($userAssignmentsGroup) {
-
-            $first = $userAssignmentsGroup->first();
-            $zone_id     = $first->location->cluster->zone->id;
-            $cluster_id  = $first->location->cluster->id;
-            $location_id = $first->location_id;
-
-            $departments = $userAssignmentsGroup->map(function($uldr) {
-                $roles = [
-                    [
-                        'value' => $uldr->role->id,
-                        'label' => $uldr->role->name
-                    ]
-                ];
-
-                return [
-                    'department_id' => $uldr->department_id,
-                    'roles'         => $roles,
-                ];
-            })->values();
-
-            return [
-                'location_id' => $location_id,
-                'zone_id'     => $zone_id,
-                'cluster_id'  => $cluster_id,
-                'department'  => $departments
-            ];
-        })->values();
+        $role = $user->roles->first();
 
         $response = [
             'id'        => $user->id,
             'name'      => $user->name,
             'username'  => $user->username,
             'email'     => $user->email,
-            'phone'     => $user->phone,
             'dialCode'  => $user->dial_code,
+            'phone'     => $user->phone,
             'address'   => $user->address,
+            'city'      => $user->city,
+            'postcode'  => $user->postcode,
+            'profileImage' => $user->profile_image,
             'signature' => $user->signature,
-            'role'      => $role ? $role->id : null,
-            'userRoles' => $userRoles
+            'role'      => optional($role)->id,
         ];
 
-        return response()->json(['data'=>$response]);
+        if ($ctx['lab_id'] != 0) {
+
+            $accesses = $user->labUsers->flatMap->accesses;
+
+            $userRoles = $accesses
+                ->groupBy('location_id')
+                ->map(function ($locationAccesses) {
+
+                    $first = $locationAccesses->first();
+
+                    return [
+                        'zone_id'     => optional($first->location->cluster->zone)->id,
+                        'cluster_id'  => optional($first->location->cluster)->id,
+                        'location_id' => $first->location_id,
+
+                        'department' => $locationAccesses
+                            ->whereNotNull('lab_location_department_id')
+                            ->groupBy('lab_location_department_id')
+                            ->map(function ($deptAccesses) {
+                                return [
+                                    'department_id' => optional($deptAccesses->first()->department->department)->id,
+                                    'roles' => $deptAccesses->map(function ($access) {
+                                        return [
+                                            'value' => $access->role->id
+                                        ];
+                                    })->values()
+                                ];
+                            })->values()
+                    ];
+                })->values();
+
+            // ✅ Attach only here
+            $response['userRoles'] = $userRoles;
+        }
+
+        return response()->json(['data' => $response]);
     }
 
 

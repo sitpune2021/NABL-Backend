@@ -67,7 +67,7 @@ class AuthProfileController extends Controller
                             $department = optional($deptAccesses->first()->department);
 
                             return [
-                                'id' => $department?->id,
+                                'id' => $department?->department?->id,
                                 'name' => $department?->department?->name,
                                 'roles' => $deptAccesses->map(fn($a) => [
                                     'id' => $a->role->id,

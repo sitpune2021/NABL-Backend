@@ -31,7 +31,7 @@ class RolePermissionsController extends Controller
                 $q->select('users.id', 'users.name');
             }])
             ->where('lab_id', $ctx['lab_id'])                // ✅ MASTER ONLY
-            ->where('level', '>', $minLevel)    // ✅ RBAC hierarchy
+            ->where('level', '>=', $minLevel)    // ✅ RBAC hierarchy
             ->orderBy('level')
             ->get()
             ->map(function ($role) {
