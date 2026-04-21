@@ -15,6 +15,7 @@ class Instrument extends Model
         'name',
         'short_name',
         'manufacturer',
+        'vendor_name',
         'serial_no',
         'identifier',
         'owner_type',
