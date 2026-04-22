@@ -107,6 +107,9 @@ class ClauseDocumentLinkController extends Controller
 
         $ownerType = $ctx['owner_type'];
         $ownerId   = $ctx['owner_id'];
+        $locationId   = $ctx['location_id'];
+        $departmentId   = $ctx['department_id'];
+        
         // ✅ STEP 1: Get user assigned tasks (only if bysingle)
         $clauseIds = collect();
         $documentIds = collect();
@@ -123,26 +126,27 @@ class ClauseDocumentLinkController extends Controller
 
             $locationIds = $userAccess->pluck('location_id')->filter()->unique();
 
-            $departmentIds = $userAccess->pluck('lab_location_department_id')
-                ->filter()
-                ->unique();
+            $departmentIds = $userAccess->pluck('department.department_id')->filter()->unique()->values();
 
-            $tasks = Assignment::where(function ($q) use ($locationIds, $departmentIds) {
+            $tasks = Assignment::where(function ($q) use ($locationIds, $departmentIds, $locationId, $departmentId) {
 
                 // ✅ USER LEVEL
                 $q->where('user_id',Auth::id())
 
                 // ✅ DEPARTMENT LEVEL
-                ->orWhere(function ($q2) use ($departmentIds) {
+                ->orWhere(function ($q2) use ($departmentIds, $departmentId) {
                     $q2->whereNull('user_id')
-                    ->whereIn('department_id', $departmentIds);
+                    ->whereIn('department_id', $departmentIds)
+                    ->where('department_id', $departmentId);
                 })
 
                 // ✅ LOCATION LEVEL
-                ->orWhere(function ($q3) use ($locationIds) {
+                ->orWhere(function ($q3) use ($locationIds, $locationId) {
                     $q3->whereNull('user_id')
                     ->whereNull('department_id')
-                    ->whereIn('location_id', $locationIds);
+                    ->whereIn('location_id', $locationIds)
+                    ->where('location_id', $locationId);
+
                 });
 
             })->get();
