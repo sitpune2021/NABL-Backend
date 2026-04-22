@@ -20,7 +20,7 @@ return new class extends Migration
             $table->enum('status', ['pending', 'completed'])->default('completed');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
-            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
+            $table->foreignId('owner_id')->comment('lab_id when owner_type = lab')->default(0);
 
             $table->timestamps();
             $table->softDeletes();
@@ -35,7 +35,7 @@ return new class extends Migration
             CREATE UNIQUE INDEX zones_unique_super_admin_name
             ON zones (name)
             WHERE owner_type = 'super_admin'
-              AND owner_id IS NULL
+              AND owner_id = 0
               AND deleted_at IS NULL
         ");
 
@@ -44,7 +44,7 @@ return new class extends Migration
             CREATE UNIQUE INDEX zones_unique_super_admin_identifier
             ON zones (identifier)
             WHERE owner_type = 'super_admin'
-              AND owner_id IS NULL
+              AND owner_id = 0
               AND deleted_at IS NULL
         ");
 

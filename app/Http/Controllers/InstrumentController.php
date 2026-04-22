@@ -379,7 +379,7 @@ class InstrumentController extends Controller
                 'manufacturer' => $labInstrument->manufacturer,
                 'vendor_name' => $labInstrument->vendor_name,
                 'owner_type' => 'super_admin',
-                'owner_id' => null,
+                'owner_id' => 0,
                 'status' => 'pending',
             ]);
 

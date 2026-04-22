@@ -5,12 +5,17 @@ namespace App\Http\Controllers;
 use Illuminate\Support\Str;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{DB, Hash};
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 use App\Services\NavigationAccessService;
+use App\Mail\LabCreatedMail;
 
 use App\Models\{Lab,
     Location,
@@ -38,7 +43,6 @@ use App\Models\{Lab,
     ClauseDocumentLink,
     LabInstrumentAssignment
     };
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class LabController extends Controller
 {
@@ -117,6 +121,8 @@ class LabController extends Controller
                 $this->assignRoleToUser($superAdmin, $lab, 1);
             }
 
+            $locationUsers = [];
+
             // 3. Lab location
             foreach ($request->location ?? [] as $loc) {
                 $zone = $this->createIfNotExists(Zone::class, $loc['zone_id'], $lab, $loc);
@@ -132,6 +138,11 @@ class LabController extends Controller
                 if ($primaryEmail || $primaryPhone) {
                     $admin = $this->createLabUser($primaryEmail['value'] ?? null, $primaryPhone['value'] ?? null, false);
                     $this->assignRoleToUser($admin, $lab, 2,true, $labLocation->id);
+                    $locationUsers[] = [
+                        'location_name' => $labLocation->name,
+                        'email' => $admin->email,
+                        'password' => 'admin123',
+                    ];
                 }
 
                  // Instruments
@@ -221,8 +232,23 @@ class LabController extends Controller
                     ]);
                 }
             }
-
             DB::commit();
+
+            $mailData = [
+                'lab_name'       => $lab->name,
+                'location_count' => $lab->location_limit,
+                'user_limit'     => $lab->user_limit,
+                'super_admin' => [
+                    'email' => $superAdmin->email,
+                    'name'  => $superAdmin->name,
+                ],
+                'locations'      => $locationUsers,
+            ];
+
+            if ($superAdmin && $superAdmin->email) {
+                Mail::to($superAdmin->email)->send(new LabCreatedMail($mailData));
+            }
+
             return response()->json(['message' => 'Lab created successfully', 'lab_id' => $lab->id], 201);
 
         } catch (\Exception $e) {

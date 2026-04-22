@@ -46,74 +46,73 @@ class LabTaskAssignController extends Controller
             $request->validate([
                 'document_id' => 'required|integer',
                 'clause_id' => 'required|integer',
-                'location_id' => 'required|integer',
-                'department_id' => 'nullable|integer',
-                'user_ids' => 'nullable|array',
+                'locations' => 'required|array',
+                'locations.*.id' => 'required|integer',
+                'locations.*.departments' => 'nullable|array',
+                'locations.*.departments.*.id' => 'required|integer',
+                'locations.*.departments.*.users' => 'nullable|array',
             ]);
 
-            $locationId   = $request->location_id;
-            $departmentId = $request->department_id;
-            $userIds      = $request->user_ids ?? [];
-
-            // 🔥 CLEAN OLD ASSIGNMENTS (IMPORTANT)
+            // 🔥 DELETE OLD (for this document + clause)
             Assignment::where([
-                // 'lab_id' => $ctx['lab_id'],
                 'document_id' => $request->document_id,
                 'clause_id' => $request->clause_id,
-                'location_id' => $locationId,
             ])->delete();
 
-            // 🔥 CASE 1: LOCATION LEVEL
-            if ($locationId && !$departmentId && empty($userIds)) {
+            foreach ($request->locations as $location) {
 
-                Assignment::updateOrCreate([
-                    // 'lab_id' => $ctx['lab_id'],
-                    'document_id' => $request->document_id,
-                    'clause_id'   => $request->clause_id,
-                    'location_id' => $locationId,
-                    'department_id' => null,
-                    'user_id' => null,
-                ], [
-                    'scope_type' => 'location',
-                    'assigned_by' => $authUser->id,
-                    'assigned_at' => now(),
-                ]);
-            }
+                $locationId = $location['id'];
+                $departments = $location['departments'] ?? [];
 
-            // 🔥 CASE 2: DEPARTMENT LEVEL
-            elseif ($locationId && $departmentId && empty($userIds)) {
+                // ✅ CASE 1: ONLY LOCATION
+                if (empty($departments)) {
 
-                Assignment::updateOrCreate([
-                    // 'lab_id' => $ctx['lab_id'],
-                    'document_id' => $request->document_id,
-                    'clause_id'   => $request->clause_id,
-                    'location_id' => $locationId,
-                    'department_id' => $departmentId,
-                    'user_id' => null,
-                ], [
-                    'scope_type' => 'department',
-                    'assigned_by' => $authUser->id,
-                    'assigned_at' => now(),
-                ]);
-            }
-
-            // 🔥 CASE 3: USER LEVEL
-            else {
-
-                foreach ($userIds as $userId) {
-
-                    Assignment::updateOrCreate([
-                        // 'lab_id' => $ctx['lab_id'],
+                    Assignment::create([
                         'document_id' => $request->document_id,
                         'clause_id'   => $request->clause_id,
                         'location_id' => $locationId,
-                        'department_id' => $departmentId,
-                        'user_id' => $userId,
-                    ], [
-                        'scope_type' => 'user',
+                        'department_id' => null,
+                        'user_id' => null,
+                        'scope_type' => 'location',
                         'assigned_by' => $authUser->id,
                         'assigned_at' => now(),
                     ]);
+                }
+
+                foreach ($departments as $dept) {
+
+                    $departmentId = $dept['id'];
+                    $users = $dept['users'] ?? [];
+
+                    // ✅ CASE 2: DEPARTMENT ONLY
+                    if (empty($users)) {
+
+                        Assignment::create([
+                            'document_id' => $request->document_id,
+                            'clause_id'   => $request->clause_id,
+                            'location_id' => $locationId,
+                            'department_id' => $departmentId,
+                            'user_id' => null,
+                            'scope_type' => 'department',
+                            'assigned_by' => $authUser->id,
+                            'assigned_at' => now(),
+                        ]);
+                    }
+
+                    // ✅ CASE 3: USERS
+                    foreach ($users as $user) {
+
+                        Assignment::create([
+                            'document_id' => $request->document_id,
+                            'clause_id'   => $request->clause_id,
+                            'location_id' => $locationId,
+                            'department_id' => $departmentId,
+                            'user_id' => $user['id'],
+                            'scope_type' => 'user',
+                            'assigned_by' => $authUser->id,
+                            'assigned_at' => now(),
+                        ]);
+                    }
                 }
             }
 

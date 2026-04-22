@@ -20,7 +20,7 @@ return new class extends Migration
             $table->enum('status', ['controlled', 'uncontrolled'])->default('controlled');
             $table->enum('mode', ['create', 'upload'])->default('create');
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
-            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
+            $table->foreignId('owner_id')->comment('lab_id when owner_type = lab')->default(0);
             $table->timestamps();
             $table->softDeletes();
             $table->index(['owner_type', 'owner_id']);

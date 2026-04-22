@@ -348,12 +348,12 @@ class DepartmentController extends Controller
         DB::beginTransaction();
         try {
             $masterDepartment = Department::create([
-                'parent_id'              => $labDepartment->id,
-                'name'                   => $labDepartment->name,
-                'identifier'             => $labDepartment->identifier,
-                'owner_type'             => 'super_admin',
-                'owner_id'               => null,
-                'status'   => 'pending',
+                'parent_id'      => $labDepartment->id,
+                'name'           => $labDepartment->name,
+                'identifier'     => $labDepartment->identifier,
+                'owner_type'     => 'super_admin',
+                'owner_id'       => 0,
+                'status'         => 'pending',
             ]);
 
             DB::commit();

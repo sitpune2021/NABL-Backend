@@ -347,7 +347,7 @@ class SubCategoryController extends Controller
                     'name'       => $labCategory->name,
                     'identifier' => $labCategory->identifier,
                     'owner_type' => 'super_admin',
-                    'owner_id'   => null,
+                    'owner_id'   => 0,
                 ]);
             }
 
