@@ -82,6 +82,7 @@ class InstrumentController extends Controller
             'short_name' => ['required'],
             'serial_no' => ['required'],
             'manufacturer' => ['required'],
+            'vendor_name' => ['required'],
 
             'parent_id' => [
                 'nullable',
@@ -130,6 +131,7 @@ class InstrumentController extends Controller
                 'short_name' => $request->short_name,
                 'serial_no' => $request->serial_no,
                 'manufacturer' => $request->manufacturer,
+                'vendor_name' => $request->vendor_name,
                 'owner_type' => $ctx['owner_type'],
                 'owner_id' => $ctx['owner_id'],
                 'status' => 'completed',
@@ -222,7 +224,8 @@ class InstrumentController extends Controller
                 'identifier',
                 'short_name',
                 'serial_no',
-                'manufacturer'
+                'manufacturer',
+                'vendor_name'
             ]));
             DB::commit();
 
@@ -374,6 +377,7 @@ class InstrumentController extends Controller
                 'short_name' => $labInstrument->short_name,
                 'serial_no' => $labInstrument->serial_no,
                 'manufacturer' => $labInstrument->manufacturer,
+                'vendor_name' => $labInstrument->vendor_name,
                 'owner_type' => 'super_admin',
                 'owner_id' => 0,
                 'status' => 'pending',
