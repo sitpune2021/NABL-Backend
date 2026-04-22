@@ -19,7 +19,7 @@ return new class extends Migration
             $table->foreignId('document_version_id')->nullable()->constrained('document_versions')->nullOnDelete()->comment('master category id if this is a lab override');
 
             $table->enum('owner_type', ['super_admin', 'lab'])->default('super_admin');
-            $table->foreignId('owner_id')->nullable()->comment('lab_id when owner_type = lab');
+            $table->foreignId('owner_id')->comment('lab_id when owner_type = lab')->default(0);
             
             $table->timestamps();
         });
