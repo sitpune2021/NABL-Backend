@@ -63,13 +63,15 @@ class DocumentController extends Controller
                 $query->orderBy($sortKey, $sortOrder);
             }
 
-                    // Pagination
+            // Pagination
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize = (int) $request->input('pageSize', 10);
 
             $documents = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-           
-            $documents->getCollection()->transform(function ($doc) {
+
+            $documents->getCollection()->transform(function ($doc, $index) use ($documents) {
+                $serial = $documents->firstItem() + $index;
+                $doc->sr = str_pad($serial, 4, '0', STR_PAD_LEFT);
                 $doc->versions_count  = $doc->versions()->count();
                 $doc->current_vrsn = optional($doc->currentVersion)->full_version;
 

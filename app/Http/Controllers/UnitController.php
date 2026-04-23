@@ -55,10 +55,11 @@ class UnitController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $units = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $data = collect($units->items())->addSerial($units->firstItem());
 
             return response()->json([
                 'status' => true,
-                'data' => $units->items(),
+                'data' => $data,
                 'total' => $units->total()
             ], 200);
 

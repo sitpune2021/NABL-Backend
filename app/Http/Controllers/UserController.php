@@ -78,19 +78,21 @@ class UserController extends Controller
 
             // Pagination
             $pageIndex = (int) $request->input('pageIndex', 1);
-            $pageSize = (int) $request->input('pageSize', 10);
+            $pageSize  = (int) $request->input('pageSize', 10);
 
             $users = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
             // Transform to location → department → role structure
-            $data = $users->map(function ($user) {
+            $data = collect($users->items())->values()->map(function ($user, $index) use ($users) {
+                $serial = $users->firstItem() + $index;
+
                 $accesses = $user->labUsers->flatMap->accesses;
 
                 $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
 
                     $location = optional($locationAccesses->first()->location);
 
-                    // ✅ 1. LOCATION LEVEL ROLES (department_id = null)
+                    // LOCATION LEVEL ROLES
                     $locationRoles = $locationAccesses
                         ->whereNull('lab_location_department_id')
                         ->map(function ($access) {
@@ -101,7 +103,7 @@ class UserController extends Controller
                         })
                         ->values();
 
-                    // ✅ 2. DEPARTMENT LEVEL ROLES
+                    // DEPARTMENT LEVEL ROLES
                     $departments = $locationAccesses
                         ->whereNotNull('lab_location_department_id')
                         ->groupBy('lab_location_department_id')
@@ -133,6 +135,7 @@ class UserController extends Controller
                 })->values();
 
                 return [
+                    'sr' => str_pad($serial, 4, '0', STR_PAD_LEFT), // 👈 ADD THIS
                     'id' => $user->id,
                     'name' => $user->name,
                     'username' => $user->username,

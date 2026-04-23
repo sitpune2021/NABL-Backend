@@ -70,6 +70,8 @@ class SubCategoryController extends Controller
 
             $subCategories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
+            $data = collect($subCategories->items())->addSerial($subCategories->firstItem());
+
             return response()->json([
                 'success' => true,
                 'data' => $subCategories->items(),

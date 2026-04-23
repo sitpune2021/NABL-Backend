@@ -53,11 +53,11 @@ class InstrumentController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $instruments = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-
+            $data = collect($instruments->items())->addSerial($instruments->firstItem());
 
             return response()->json([
                 'status' => true,
-                'data' => $instruments->items(),
+                'data' => $data,
                 'total' => $instruments->total()
             ], 200);
 

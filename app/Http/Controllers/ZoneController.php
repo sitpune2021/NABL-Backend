@@ -52,10 +52,12 @@ class ZoneController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $zones = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+                        $data = collect($zones->items())->addSerial($zones->firstItem());
+
 
             return response()->json([
                 'success' => true,
-                'data' => $zones->items(),
+                'data' => $data,
                 'total' => $zones->total()
             ]);
         } catch (Exception $e) {

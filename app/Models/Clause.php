@@ -14,7 +14,7 @@ class Clause extends Model
         'numbering_type','numbering_value','sort_order'
     ];
 
-    protected $appends = ['children_count'];
+    protected $appends = ['children_count', 'full_number'];
 
     public function standard() {
         return $this->belongsTo(Standard::class);
@@ -58,6 +58,26 @@ class Clause extends Model
     public function documentLinks()
     {
         return $this->hasMany(ClauseDocumentLink::class, 'clause_id');
+    }
+
+    public function getFullNumberAttribute()
+    {
+        $numbers = [];
+        $clause = $this;
+
+        while ($clause) {
+            if (!empty($clause->numbering_value)) {
+                array_unshift($numbers, $clause->numbering_value);
+            }
+            $clause = $clause->parent;
+        }
+
+        return implode('.', $numbers);
+    }
+
+    public function parentRecursive()
+    {
+        return $this->parent()->with('parentRecursive');
     }
 
 }

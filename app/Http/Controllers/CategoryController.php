@@ -54,9 +54,11 @@ class CategoryController extends Controller
 
             $categories = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
+            $data = collect($categories->items())->addSerial($categories->firstItem());
+
             return response()->json([
                 'success' => true,
-                'data' => $categories->items(),
+                'data' => $data,
                 'total' => $categories->total()
             ], 200);
         } catch (Exception $e) {

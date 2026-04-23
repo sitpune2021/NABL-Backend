@@ -85,10 +85,13 @@ class LocationController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $locations = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
-            
-            $data = collect($locations->items())->map(function ($location) {
+
+            $data = collect($locations->items())->values()->map(function ($location, $index) use ($locations) {
+                $serial = $locations->firstItem() + $index;
 
                 $locationArray = $location->toArray();
+
+                $locationArray['sr'] = str_pad($serial, 4, '0', STR_PAD_LEFT); // 👈 ADD THIS
 
                 $locationArray['departments'] = collect($location->departments)->map(function ($ld) {
 
@@ -107,7 +110,7 @@ class LocationController extends Controller
                                 'user' => optional($access->labUser)->user,
                                 'role' => $access->role,
                             ];
-
+                            
                         })
                         ->filter(fn($u) => $u['user'] !== null)
                         ->values();
