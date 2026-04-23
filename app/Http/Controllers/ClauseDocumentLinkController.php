@@ -12,6 +12,7 @@ use App\Models\Clause;
 use App\Models\Assignment;
 use Illuminate\Support\Facades\Validator;
 use App\Models\Document;
+use App\Models\Lab;
 
 class ClauseDocumentLinkController extends Controller
 {
@@ -362,4 +363,126 @@ class ClauseDocumentLinkController extends Controller
 
         return $validator;
     }
+
+    public function flatDocuments(Request $request)
+    {
+        try {
+            $ctx = $this->labContext($request);
+
+            $ownerType = $ctx['owner_type'];
+            $ownerId   = $ctx['owner_id'];
+
+            $lab = Lab::findOrFail($ownerId);
+
+            $locationId   = $ctx['location_id'];
+            $departmentId   = $ctx['department_id'];
+            
+            // ✅ STEP 1: Get user assigned tasks (only if bysingle)
+            $clauseIds = collect();
+            $documentIds = collect();
+
+            if ($request->type === 'bysingle') 
+            {
+                $userAccess = \App\Models\LabUserAccess::with([  'location', 'department'])->whereHas('labUser', function ($q) {$q->where('user_id', Auth::id());})->get();
+
+                $locationIds = $userAccess->pluck('location_id')->filter()->unique();
+
+                $departmentIds = $userAccess->pluck('department.department_id')->filter()->unique()->values();
+
+                $tasks = Assignment::where(function ($q) use ($locationIds, $departmentIds, $locationId, $departmentId) {
+
+                    // ✅ USER LEVEL
+                    $q->where('user_id',Auth::id())
+
+                    // ✅ DEPARTMENT LEVEL
+                    ->orWhere(function ($q2) use ($departmentIds, $departmentId) {
+                        $q2->whereNull('user_id')
+                        ->whereIn('department_id', $departmentIds)
+                        ->where('department_id', $departmentId);
+                    })
+
+                    // ✅ LOCATION LEVEL
+                    ->orWhere(function ($q3) use ($locationIds, $locationId) {
+                        $q3->whereNull('user_id')
+                        ->whereNull('department_id')
+                        ->whereIn('location_id', $locationIds)
+                        ->where('location_id', $locationId);
+
+                    });
+
+                })->get();
+
+                $clauseIds = $tasks->pluck('clause_id')->unique();
+                $documentIds = $tasks->pluck('document_id')->unique();
+            }
+
+            $pageIndex = (int) $request->input('pageIndex', 1);
+            $pageSize  = (int) $request->input('pageSize', 10);
+
+            $query = ClauseDocumentLink::query()
+                ->with([
+                    'clause.parentRecursive', // ✅ important
+                    'clause:id,title,parent_id,numbering_value',
+                    'document:id,name,number,status',
+                    'document.currentVersion'
+                ])
+                ->where('standard_id', $lab->standard_id)
+                ->when($ownerType === 'super_admin', fn($q) => $q->superAdmin())
+                ->when($ownerType === 'lab', fn($q) => $q->forLab($ownerId))
+                ->when($request->type === 'bysingle', function ($q) use ($clauseIds, $documentIds) {
+                    $q->whereIn('clause_id', $clauseIds)
+                    ->whereIn('document_id', $documentIds);
+                });
+
+            // ✅ PAGINATE (DB level)
+            $links = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+
+            $data = collect($links->items())->values()->map(function ($link, $index) use ($links) {
+
+                $doc = $link->document;
+                $version = $doc?->currentVersion;
+
+                return [
+                    'sr'       => str_pad($links->firstItem() + $index, 4, '0', STR_PAD_LEFT),
+                    'clause'   => trim($link->clause->full_number . ' ' . $link->clause->title),
+                    'document' => $doc?->name,
+                    'id'       => $doc?->id,
+                    'status'   => $doc?->status,
+                    'number'   => $doc?->number,
+                    'version'  => $version?->full_version,
+                    'schedule' => $version?->schedule['type'] ?? null,
+                ];
+            });
+
+            return response()->json([
+                'success'   => true,
+                'data'      => $data,
+                'total'     => $links->total(),
+                'pageIndex' => $links->currentPage(),
+                'pageSize'  => $links->perPage(),
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch flat documents',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    private function buildClauseNumber($clause)
+    {
+        $numbers = [];
+
+        while ($clause) {
+            if (!empty($clause->numbering_value)) {
+                array_unshift($numbers, $clause->numbering_value);
+            }
+            $clause = $clause->parent;
+        }
+
+        return implode('.', $numbers);
+    }
+
 }

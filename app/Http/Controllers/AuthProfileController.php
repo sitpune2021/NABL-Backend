@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Spatie\Permission\PermissionRegistrar;
-use App\Models\{User, Lab};
+use App\Models\{User, Lab, LabUser};
 
 class AuthProfileController extends Controller
 {
@@ -23,8 +23,13 @@ class AuthProfileController extends Controller
             'labUsers.accesses.role',
             'labUsers.accesses.location',
             'labUsers.accesses.department.department',
+            'userAssignments',
+            'userAssignments.role',
+            'userAssignments.location',
         ]);
 
+        $lableveluser = LabUser::where('user_id', $user->id)->exists();
+        
         $labIds = $rolesCollection->pluck('lab_id')
             ->filter(fn($id) => $id != 0)
             ->unique();
@@ -35,55 +40,91 @@ class AuthProfileController extends Controller
 
         $roles = $rolesCollection
             ->groupBy('lab_id')
-            ->map(function ($group) use ($user, $labs) {
+            ->map(function ($group) use ($user, $labs, $lableveluser) {
 
                 $labId = $group->first()->lab_id;
                 $lab   = $labs[$labId] ?? null;
 
-                // ✅ GET ACCESSES FOR THIS LAB
-                $labUser = $user->labUsers->firstWhere('lab_id', $labId);
-                $accesses = $labUser?->accesses ?? collect();
+                if($lableveluser)
+                {
+                    
+                    // ✅ GET ACCESSES FOR THIS LAB
+                    $labUser = $user->labUsers->firstWhere('lab_id', $labId);
+                    $accesses = $labUser?->accesses ?? collect();
+                    $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
+                        $location = optional($locationAccesses->first()->location);
+                        // LOCATION ROLES
+                        $locationRoles = $locationAccesses
+                            ->whereNull('lab_location_department_id')
+                            ->map(fn($a) => [
+                                'id' => $a->role->id,
+                                'name' => $a->role->name,
+                            ])
+                            ->values();
 
-                // ✅ GROUP BY LOCATION
-                $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
+                        // DEPARTMENT ROLES
+                        $departments = $locationAccesses
+                            ->whereNotNull('lab_location_department_id')
+                            ->groupBy('lab_location_department_id')
+                            ->map(function ($deptAccesses) {
 
-                    $location = optional($locationAccesses->first()->location);
+                                $department = optional($deptAccesses->first()->department);
 
-                    // LOCATION ROLES
-                    $locationRoles = $locationAccesses
-                        ->whereNull('lab_location_department_id')
-                        ->map(fn($a) => [
-                            'id' => $a->role->id,
-                            'name' => $a->role->name,
-                        ])
-                        ->values();
+                                return [
+                                    'id' => $department?->department?->id,
+                                    'name' => $department?->department?->name,
+                                    'roles' => $deptAccesses->map(fn($a) => [
+                                        'id' => $a->role->id,
+                                        'name' => $a->role->name,
+                                    ])->values()
+                                ];
+                            })
+                            ->values();
 
-                    // DEPARTMENT ROLES
-                    $departments = $locationAccesses
-                        ->whereNotNull('lab_location_department_id')
-                        ->groupBy('lab_location_department_id')
-                        ->map(function ($deptAccesses) {
+                        return [
+                            'id' => $location?->id,
+                            'name' => $location?->name,
+                            'roles' => $locationRoles,
+                            'departments' => $departments
+                        ];
+                    })->values();
+                 }
+                else{
+                    $accesses = $user->userAssignments
+                        ->where('lab_id', $labId)
+                        ->filter(fn($a) => !is_null($a->location_id));
 
-                            $department = optional($deptAccesses->first()->department);
+                    $locations = $accesses->isEmpty()
+                        ? collect([])
+                        : $accesses
+                            ->groupBy('location_id')
+                            ->map(function ($locationAccesses) {
 
-                            return [
-                                'id' => $department?->department?->id,
-                                'name' => $department?->department?->name,
-                                'roles' => $deptAccesses->map(fn($a) => [
-                                    'id' => $a->role->id,
-                                    'name' => $a->role->name,
-                                ])->values()
-                            ];
-                        })
-                        ->values();
+                                $location = $locationAccesses->first()->location;
 
-                    return [
-                        'id' => $location?->id,
-                        'name' => $location?->name,
-                        'roles' => $locationRoles,
-                        'departments' => $departments
-                    ];
-                })->values();
+                                // ❌ If location relation missing → skip
+                                if (!$location) {
+                                    return null;
+                                }
+
+                                $locationRoles = $locationAccesses
+                                    ->unique('role_id') // ✅ avoid duplicates
+                                    ->map(fn($a) => [
+                                        'id' => $a->role_id,
+                                        'name' => optional($a->role)->name,
+                                    ])
+                                    ->values();
+
+                                return [
+                                    'id' => $location->id,
+                                    'name' => $location->name,
+                                    'roles' => $locationRoles,
+                                ];
+                            })
+                            ->filter() // ✅ remove null locations
+                            ->values();
+
+                }
 
                 return [
                     'lab_id'   => $labId,

@@ -76,11 +76,17 @@ class StandardController extends Controller
 
             // Pagination
             $pageIndex = (int) $request->input('pageIndex', 1);
-            $pageSize = (int) $request->input('pageSize', 10);
+            $pageSize  = (int) $request->input('pageSize', 10);
 
             $standards = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-            $data = collect($standards->items())->map(function ($standard) use ($ownerType, $ownerId) {
+            $data = collect($standards->items())->values()->map(function ($standard, $index) use ($ownerType, $ownerId, $standards) {
+
+                // ✅ SERIAL
+                $serial = $standards->firstItem() + $index;
+                $standard->sr = str_pad($serial, 4, '0', STR_PAD_LEFT);
+
+                // existing logic
                 $standard->is_document_link = $standard->clauseDocumentLinks()
                     ->when($ownerType === 'super_admin', fn($q) => $q->superAdmin())
                     ->when($ownerType === 'lab', fn($q) => $q->forLab($ownerId))

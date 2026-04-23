@@ -24,7 +24,6 @@ class LabTaskAssignController extends Controller
             'location:id,name',
             'department:id,name'
         ])
-        // ->where('lab_id', $ctx['lab_id'])
         ->get();
 
         return response()->json([

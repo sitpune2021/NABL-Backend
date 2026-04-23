@@ -58,10 +58,11 @@ class DepartmentController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $departments = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $data = collect($departments->items())->addSerial($departments->firstItem());
 
             return response()->json([
                 'status' => true,
-                'data' => $departments->items(),
+                'data' => $data,
                 'total' => $departments->total()
             ], 200);
         } catch (\Exception $e) {

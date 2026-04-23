@@ -205,6 +205,7 @@ Route::prefix('v1')->group(function () {
         */
         Route::apiResource('standards', StandardController::class);
         Route::apiResource('clauses', ClauseDocumentLinkController::class);
+        Route::get('document-links', [ClauseDocumentLinkController::class, 'flatDocuments']);
 
         /*
         |--------------------------------------------------------------------------

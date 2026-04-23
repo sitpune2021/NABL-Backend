@@ -17,6 +17,8 @@ use Spatie\Permission\PermissionRegistrar;
 use App\Services\NavigationAccessService;
 use App\Mail\LabCreatedMail;
 
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use App\Models\{Lab,
     Location,
     LabLocationDepartment,
@@ -50,33 +52,47 @@ class LabController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        $authUser = auth()->user();
+        try {
+            $authUser = auth()->user();
 
-        $query = Lab::with([
-            'contacts',
-            'location.contacts', // ✅ fixed plural
-            'users'
-        ]);
+            $query = Lab::with([
+                'contacts',
+                'location.contacts',
+                'users'
+            ]);
 
-        // If user is a lab user → restrict labs
-        $query->when(
-            LabUser::where('user_id', $authUser->id)->exists(),
-            function ($q) use ($authUser) {
-                $q->whereHas('users', function ($sub) use ($authUser) {
-                    $sub->where('user_id', $authUser->id);
+            // Restrict labs if user is lab user
+            $isLabUser = LabUser::where('user_id', $authUser->id)->exists();
+
+            if ($isLabUser) {
+                $query->whereHas('users', function ($q) use ($authUser) {
+                    $q->where('user_id', $authUser->id);
                 });
             }
-        );
+            
+            $pageIndex = (int) $request->input('pageIndex', 1);
+            $pageSize  = (int) $request->input('pageSize', 10);
 
-        // Otherwise → show all labs
-        $labs = $query->get();
+            $labs = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-        return response()->json([
-            'data'  => $labs,
-            'total' => $labs->count()
-        ]);
+            // ✅ ADD SERIAL (using your macro)
+            $data = collect($labs->items())->addSerial($labs->firstItem() ?? 1);
+
+            return response()->json([
+                'success'   => true,
+                'data'      => $data,
+                'total'     => $labs->total(),
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch labs',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -84,6 +100,163 @@ class LabController extends Controller
      */
     public function store(Request $request, NavigationAccessService $service)
     {
+
+        $validator = Validator::make($request->all(), [
+
+            // 🔹 Basic Info
+            'name' => ['required', 'string', 'max:255'],
+            'lab_type' => ['required', 'in:pathology,radiology,other'],
+            'lab_code' => [
+                'required',
+                Rule::unique('labs', 'lab_code')
+            ],
+            'location_limit' => ['required', 'integer', 'min:1'],
+            'user_limit' => ['required', 'integer', 'min:1'],
+
+            // 🔹 Emails
+            'emails' => ['required', 'array', 'min:1'],
+            'emails.*.value' => [
+                'required',
+                'email',
+                function ($attr, $value, $fail) use ($request) {
+                    $index = explode('.', $attr)[1];
+                    $isPrimary = $request->emails[$index]['is_primary'] ?? false;
+
+                    if ($isPrimary) {
+                        if (User::where('email', $value)->exists()) {
+                            $fail('Primary email already exists in users.');
+                        }
+                    }
+                }
+            ],
+            'emails.*.type' => ['required', 'in:email'],
+            'emails.*.is_primary' => ['required', 'boolean'],
+
+            // 🔹 Phones
+            'phones' => ['required', 'array', 'min:1'],
+            'phones.*.value' => [
+                'required',
+                'digits_between:10,15',
+                function ($attr, $value, $fail) use ($request) {
+                    $index = explode('.', $attr)[1];
+                    $isPrimary = $request->phones[$index]['is_primary'] ?? false;
+
+                    if ($isPrimary) {
+                        if (User::where('phone', $value)->exists()) {
+                            $fail('Primary phone already exists in users.');
+                        }
+                    }
+                }
+            ],
+            'phones.*.type' => ['required', 'in:phone'],
+            'phones.*.is_primary' => ['required', 'boolean'],
+
+            // 🔹 Locations
+            'location' => [
+                'required',
+                'array',
+                'min:1',
+                'max:' . $request->location_limit
+            ],
+
+            'location.*.zone_id' => ['required', 'exists:zones,id'],
+            'location.*.cluster_id' => ['required', 'exists:clusters,id'],
+            'location.*.location_id' => ['required', 'exists:locations,id'],
+
+            'location.*.prefix' => ['required', 'distinct'],
+            'location.*.shortName' => ['required'],
+
+            // 🔹 Location Emails
+            'location.*.emails' => ['required', 'array'],
+            'location.*.emails.*.value' => ['required', 'email'],
+            'location.*.emails.*.value' => [
+                'required',
+                'email',
+                function ($attr, $value, $fail) {
+                    // extract indexes dynamically
+                    $parts = explode('.', $attr); 
+                    // location.0.emails.0.value → [location,0,emails,0,value]
+
+                    $locationIndex = $parts[1];
+                    $emailIndex = $parts[3];
+
+                    $isPrimary = request()->location[$locationIndex]['emails'][$emailIndex]['is_primary'] ?? false;
+
+                    if ($isPrimary) {
+                        if (\App\Models\User::where('email', $value)->exists()) {
+                            $fail('Primary location email already exists in users.');
+                        }
+                    }
+                }
+            ],
+
+            // 🔹 Location Phones
+            'location.*.phones' => ['required', 'array'],
+            'location.*.phones.*.value' => ['required', 'digits_between:10,15'],
+            'location.*.phones.*.value' => [
+                'required',
+                'digits_between:10,15',
+                function ($attr, $value, $fail) {
+
+                    $parts = explode('.', $attr);
+
+                    $locationIndex = $parts[1];
+                    $phoneIndex = $parts[3];
+
+                    $isPrimary = request()->location[$locationIndex]['phones'][$phoneIndex]['is_primary'] ?? false;
+
+                    if ($isPrimary) {
+                        if (\App\Models\User::where('phone', $value)->exists()) {
+                            $fail('Primary location phone already exists in users.');
+                        }
+                    }
+                }
+            ],
+
+            // 🔹 Departments
+            'location.*.departments' => ['required', 'array', 'min:1'],
+            'location.*.departments.*.name' => ['required', 'exists:departments,id'],
+
+            // 🔹 Department Instruments
+            'location.*.departments.*.instruments' => ['required', 'array'],
+            'location.*.departments.*.instruments.*' => ['exists:instruments,id'],
+
+            // 🔹 Location Instruments
+            'location.*.instruments' => ['nullable', 'array'],
+            'location.*.instruments.*' => ['exists:instruments,id'],
+
+            // 🔹 Documents
+            'documents' => ['nullable', 'array'],
+            'documents.*' => ['exists:documents,id'],
+
+            // 🔹 Standard
+            'standard.standard_id' => ['required', 'exists:standards,id'],
+            'standard.clause_documents_link' => ['required', 'array'],
+
+        ]);
+
+        // 🔥 After Validation (for single primary check)
+        $validator->after(function ($validator) use ($request) {
+
+            // Only 1 primary email
+            if (collect($request->emails)->where('is_primary', true)->count() !== 1) {
+                $validator->errors()->add('emails', 'Exactly one primary email required.');
+            }
+
+            // Only 1 primary phone
+            if (collect($request->phones)->where('is_primary', true)->count() !== 1) {
+                $validator->errors()->add('phones', 'Exactly one primary phone required.');
+            }
+
+        });
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         DB::beginTransaction();
 
         try {

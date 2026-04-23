@@ -47,7 +47,7 @@ class TemplateController extends Controller
 
             $templates = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-            $data = $templates->map(function ($template) {
+            $data = collect($templates->items())->values()->map(function ($template, $index) use ($templates) {
                 $currentVersion = $template->currentVersion;
 
                 $createdBy = TemplateChangeHistory::where('template_id', $template->id)
@@ -59,8 +59,10 @@ class TemplateController extends Controller
                     ->where('template_version_id', $currentVersion?->id)
                     ->orderBy('created_at','desc')
                     ->first();
+                $serial = $templates->firstItem() + $index;
 
                 return [
+                    'sr' => str_pad($serial, 4, '0', STR_PAD_LEFT), // 👈 add this
                     'id' => $template->id,
                     'name' => $template->name,
                     'type' => $template->type,
@@ -404,7 +406,7 @@ class TemplateController extends Controller
                 ->orderBy('minor', 'desc')
                 ->paginate($pageSize, ['*'], 'page', $pageIndex);
 
-            $data = $versions->map(function ($version) use ($template) {
+            $data = collect($versions->items())->values()->map(function ($version, $index) use ($template, $versions) {
 
                 $createdBy = TemplateChangeHistory::where('template_id', $template->id)
                     ->where('template_version_id', $version->id)
@@ -417,7 +419,11 @@ class TemplateController extends Controller
                     ->orderBy('created_at', 'desc')
                     ->first();
 
+                // ✅ SERIAL
+                $serial = $versions->firstItem() + $index;
+
                 return [
+                    'sr' => str_pad($serial, 4, '0', STR_PAD_LEFT), // 👈 ADD THIS
                     'id' => $version->id,
                     'name' => $template->name,
                     'temp_id' => $template->id,

@@ -68,10 +68,11 @@ class ClusterController extends Controller
             $pageSize = (int) $request->input('pageSize', 10);
 
             $clusters = $query->paginate($pageSize, ['*'], 'page', $pageIndex);
+            $data = collect($clusters->items())->addSerial($clusters->firstItem());
 
             return response()->json([
                 'status' => true,
-                'data' => $clusters->items(),
+                'data' => $data,
                 'total' => $clusters->total()
             ], 200);
 
