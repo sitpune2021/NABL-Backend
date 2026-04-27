@@ -34,6 +34,7 @@ class ClauseDocumentLinkController extends Controller
         $ctx = $this->labContext($request);
         $ownerType = $ctx['owner_type'];
         $ownerId   = $ctx['owner_id'];
+
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
@@ -45,27 +46,36 @@ class ClauseDocumentLinkController extends Controller
 
         try {
             $links = [];
+            $allClausesHaveDocuments = true;
+            $status = $request->input('status', 'draft');
 
             foreach ($request->standard_clauses as $clause) {
                 $clause_id = $clause['clause_id'];
                 $documents = $clause['clause_documents_tagging'] ?? [];
                 $notes = $clause['notes'] ?? null;
 
+                if (empty($documents)) {
+                    $allClausesHaveDocuments = false;
+                }
+
                 $Clause = Clause::findOrFail($clause_id);
+
                 if ($notes !== null) {
                     $Clause->update(['note_message' => $notes]);
                 }
 
                 foreach ($documents as $doc) {
-                    if (isset($doc['documents']['id'])) {
+                    $documentId = $doc['documents']['id'] ?? null;
+                    $versionId  = $doc['documents']['version_id'] ?? null;
+
+                    if (!empty($documentId) && $documentId > 0) {
                         $links[] = [
                             'standard_id' => $request->standard_id,
                             'clause_id' => $clause_id,
-                            'document_id' => $doc['documents']['id'],
-                            'document_version_id' => $doc['documents']['version_id'] ?? null,
-                                    'owner_type' => $ownerType,
-                                'owner_id' => $ownerId,
-
+                            'document_id' => $documentId,
+                            'document_version_id' => $versionId,
+                            'owner_type' => $ownerType,
+                            'owner_id' => $ownerId,
                         ];
                     }
                 }
@@ -75,17 +85,35 @@ class ClauseDocumentLinkController extends Controller
                 ClauseDocumentLink::insert($links);
             }
 
+            // ✅ Decide final status safely
+            $finalStatus = 'draft';
+
+            if ($status === 'published' && $allClausesHaveDocuments) {
+                $finalStatus = 'published';
+            }
+
+            // 🔒 Optional strict validation (uncomment if needed)
+            if ($status === 'published' && !$allClausesHaveDocuments) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All clauses must have tagged documents before publishing.'
+                ], 422);
+            }
+
+            // Update standard status
             Standard::where('id', $request->standard_id)
-            ->where('status', 'draft')
-            ->update([
-                'status' => 'published'
-            ]);
+                ->update([
+                    'status' => $finalStatus
+                ]);
 
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Clause document links saved successfully',
-                'links_saved' => count($links)
+                'links_saved' => count($links),
+                'status' => $finalStatus
             ]);
 
         } catch (\Exception $e) {
@@ -93,6 +121,7 @@ class ClauseDocumentLinkController extends Controller
             Log::error('Failed to save clause document links: ' . $e->getMessage());
 
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to save clause document links',
                 'error' => $e->getMessage()
             ], 500);

@@ -158,7 +158,7 @@ class StandardController extends Controller
         $newClause = Clause::create([
             'standard_id' => $standardId,
             'parent_id' => $parentId,
-            'title' => $clause['title'],
+            'title' => $clause['title'] ?? "",
             'message' => $clause['message'] ?? null,
             'note' => $clause['note'] ?? false,
             'is_child' => isset($clause['children']) && count($clause['children']) > 0,

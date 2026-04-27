@@ -195,6 +195,7 @@ Route::prefix('v1')->group(function () {
 
         // Route::prefix('labs')->group(function () {
             Route::get('lab-assignments', [LabController::class, 'labAssignments']);
+            Route::get('lab-location/{id}', [LabController::class, 'labLoactionById']);
             Route::post('lab-assignments', [LabController::class, 'assignmentUserRole']);
         // });
 

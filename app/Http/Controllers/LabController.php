@@ -72,6 +72,25 @@ class LabController extends Controller
                 });
             }
             
+            if ($request->filled('query')) {
+                $search = strtolower($request->input('query'));
+                $query->where(function ($q) use ($search) {
+                    $q->whereRaw('LOWER(name) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(lab_type) LIKE ?', ["%{$search}%"])
+                        ->orWhereRaw('LOWER(lab_code) LIKE ?', ["%{$search}%"]);
+                });
+            }
+
+            $sortKey = $request->input('sort.key', 'id'); // default sort by id
+            $sortOrder = $request->input('sort.order', 'asc'); // default ascending
+
+            $allowedSortColumns = ['id', 'name', 'lab_code', 'created_at', 'updated_at'];
+            $allowedSortOrder = ['asc', 'desc'];
+
+            if (in_array($sortKey, $allowedSortColumns) && in_array(strtolower($sortOrder), $allowedSortOrder)) {
+                $query->orderBy($sortKey, $sortOrder);
+            }
+
             $pageIndex = (int) $request->input('pageIndex', 1);
             $pageSize  = (int) $request->input('pageSize', 10);
 
@@ -105,7 +124,7 @@ class LabController extends Controller
 
             // 🔹 Basic Info
             'name' => ['required', 'string', 'max:255'],
-            'lab_type' => ['required', 'in:pathology,radiology,other'],
+            'lab_type' => ['required'],
             'lab_code' => [
                 'required',
                 Rule::unique('labs', 'lab_code')
@@ -567,6 +586,113 @@ class LabController extends Controller
                         })
                         ->values(),
                 ],
+            ];
+
+            return response()->json([
+                'success' => true,
+                'data'    => $data,
+            ], 200);
+
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lab not found',
+            ], 404);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch lab',
+                'error'   => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function labLoactionById(Request $request, string $id)
+    {
+        try {
+            $lab = Lab::with([
+                'contacts',
+                'location.contacts',
+                'location.departments.department',
+                'location',
+                'location.cluster',
+                'location.cluster.zone',
+                'location.instruments.instrument',
+                'location.departments.instruments.instrument',
+                'users.user',
+            ])->findOrFail($id);
+            $ctx = $this->labContext($request);
+
+            $labusers = $lab->users->map(fn($user) => [
+                'id' => $user->user->id,
+                'name' => $user->user->name,
+                'email' => $user->user->email,
+                'phone' => $user->user->phone,
+                'is_super_admin' => $user->user->is_super_admin,
+            ]);
+
+            $data = [
+                'location' => $lab->location->map(function ($location) use ($labusers, $ctx) {
+                    $primaryEmail = $location->contacts->where('type', 'email')->firstWhere('is_primary', true);
+                    $primaryPhone = $location->contacts->where('type', 'phone')->firstWhere('is_primary', true);
+
+                    return [
+                        'zone_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->zone->parent_id : $location->cluster->zone->id,
+                        'cluster_id' => $ctx['owner_type'] == 'super_admin' ? $location->cluster->parent_id : $location->cluster->id,
+                        'location_id' => $ctx['owner_type'] == 'super_admin' ? $location->parent_id : $location->id,
+                        'location_name_og' => $location->name,
+                        'prefix'    => $location->identifier,
+                        'shortName' => $location->short_name,
+                        // Location Emails
+                        'emails' => $location->contacts
+                            ->where('type', 'email')
+                            ->map(function ($c) use ($labusers) {
+                                $user = $labusers->firstWhere('email', $c->value);
+                                return [
+                                    'id'         => $c->id,
+                                    'user_id' => $user['id'] ?? null,
+                                    'type'       => 'email',
+                                    'value'      => $c->value,
+                                    'label'      => $c->label,
+                                    'is_primary' => (bool) $c->is_primary,
+                                ];
+                            })
+                            ->values(),
+
+                        // Location Phones
+                        'phones' => $location->contacts
+                            ->where('type', 'phone')
+                            ->map(function ($c) use ($labusers) {
+                                $user = $labusers->firstWhere('phone', $c->value);
+                                return [
+                                    'id'         => $c->id,
+                                    'user_id' => $user['id'] ?? null,
+                                    'type'       => 'phone',
+                                    'value'      => $c->value,
+                                    'label'      => $c->label,
+                                    'is_primary' => (bool) $c->is_primary,
+                                ];
+                            })
+                            ->values(),
+
+                        // Instruments
+                        'instruments' => $location->instruments
+                            ->map->instrument
+                            ->pluck($ctx['owner_type'] !== 'lab' ? 'parent_id' : 'id')
+                            ->filter()
+                            ->values(),
+                        // Departments
+                        'departments' => $location->departments->map(fn ($dept) => [
+                            'id'   => $dept->id,
+                            'name' => $ctx['owner_type'] !== 'lab' ? $dept->department->parent_id :$dept->department_id,
+                        'instruments' => $dept->instruments->map->instrument
+                            ->pluck($ctx['owner_type'] !== 'lab' ? 'parent_id' : 'id')
+                            ->filter()
+                            ->values(),
+                        ])->values(),
+                    ];
+                })->values(),
             ];
 
             return response()->json([
