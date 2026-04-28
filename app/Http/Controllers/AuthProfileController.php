@@ -162,57 +162,188 @@ class AuthProfileController extends Controller
         ]);
     }
 
+    private function formatProfileRoles(User $user)
+    {
+        $rolesCollection = $user->rolesWithLab()->get();
+
+        $user->load([
+            'labUsers.lab',
+            'labUsers.accesses.role',
+            'labUsers.accesses.location',
+            'labUsers.accesses.department.department',
+            'userAssignments',
+            'userAssignments.role',
+            'userAssignments.location',
+        ]);
+
+        $lableveluser = LabUser::where('user_id', $user->id)->exists();
+
+        $labIds = $rolesCollection->pluck('lab_id')
+            ->filter(fn($id) => $id != 0)
+            ->unique();
+
+        $labs = Lab::whereIn('id', $labIds)
+            ->get()
+            ->keyBy('id');
+
+        return $rolesCollection
+            ->groupBy('lab_id')
+            ->map(function ($group) use ($user, $labs, $lableveluser) {
+                $labId = $group->first()->lab_id;
+                $lab   = $labs[$labId] ?? null;
+
+                if ($lableveluser) {
+                    $labUser = $user->labUsers->firstWhere('lab_id', $labId);
+                    $accesses = $labUser?->accesses ?? collect();
+                    $locations = $accesses->groupBy('location_id')->map(function ($locationAccesses) {
+                        $location = optional($locationAccesses->first()->location);
+
+                        $locationRoles = $locationAccesses
+                            ->whereNull('lab_location_department_id')
+                            ->map(fn($a) => [
+                                'id' => $a->role->id,
+                                'name' => $a->role->name,
+                            ])
+                            ->values();
+
+                        $departments = $locationAccesses
+                            ->whereNotNull('lab_location_department_id')
+                            ->groupBy('lab_location_department_id')
+                            ->map(function ($deptAccesses) {
+                                $department = optional($deptAccesses->first()->department);
+
+                                return [
+                                    'id' => $department?->department?->id,
+                                    'name' => $department?->department?->name,
+                                    'roles' => $deptAccesses->map(fn($a) => [
+                                        'id' => $a->role->id,
+                                        'name' => $a->role->name,
+                                    ])->values()
+                                ];
+                            })
+                            ->values();
+
+                        return [
+                            'id' => $location?->id,
+                            'name' => $location?->name,
+                            'roles' => $locationRoles,
+                            'departments' => $departments,
+                        ];
+                    })->values();
+                } else {
+                    $accesses = $user->userAssignments
+                        ->where('lab_id', $labId)
+                        ->filter(fn($a) => !is_null($a->location_id));
+
+                    $locations = $accesses->isEmpty()
+                        ? collect([])
+                        : $accesses
+                            ->groupBy('location_id')
+                            ->map(function ($locationAccesses) {
+                                $location = $locationAccesses->first()->location;
+
+                                if (!$location) {
+                                    return null;
+                                }
+
+                                $locationRoles = $locationAccesses
+                                    ->unique('role_id')
+                                    ->map(fn($a) => [
+                                        'id' => $a->role_id,
+                                        'name' => optional($a->role)->name,
+                                    ])
+                                    ->values();
+
+                                return [
+                                    'id' => $location->id,
+                                    'name' => $location->name,
+                                    'roles' => $locationRoles,
+                                ];
+                            })
+                            ->filter()
+                            ->values();
+                }
+
+                return [
+                    'lab_id' => $labId,
+                    'lab_name' => $group->first()->lab_name ?? 'Master',
+                    'standard_id' => $lab?->standard_id,
+                    'roles' => $group->map(function ($role) {
+                        return [
+                            'id' => $role->id,
+                            'name' => $role->name,
+                            'level' => $role->level,
+                            'description' => $role->description,
+                            'permissions' => $role->permissions
+                                ->pluck('name')
+                                ->values()
+                                ->push('home', 'accessDenied'),
+                        ];
+                    })->values(),
+                    'locations' => ($labId != 0 && !$user->is_super_admin)
+                        ? $locations
+                        : [],
+                ];
+            })->values();
+    }
+
     public function show()
     {
-        $user = User::with([
-            'assignments.location.cluster.zone',
-            'assignments.department',
-            'assignments.role'
-        ])->find(auth()->id());
+        $user = auth()->user();
 
         if (!$user) {
             return response()->json(['status' => false, 'message' => 'User not found'], 404);
         }
 
-        $userRoles = $user->assignments->groupBy('location_id')->map(function($assignmentsGroup) {
+        $roles = $this->formatProfileRoles($user);
+
+        $assignments = $user->userAssignments()->with([
+            'location.cluster.zone',
+            'department',
+            'role',
+        ])->get();
+
+        $userRoles = $assignments->groupBy('location_id')->map(function ($assignmentsGroup) {
             $first = $assignmentsGroup->first();
+            $location = $first->location;
 
             return [
-                'location_id'   => $first->location_id,
-                'location_name' => $first->location->name ?? 'N/A',
-                'zone_id'       => $first->location->cluster->zone->id ?? null,
-                'cluster_id'    => $first->location->cluster->id ?? null,
-                'department'    => $assignmentsGroup->groupBy('department_id')->map(function($deptAssignments) {
+                'location_id' => $first->location_id,
+                'location_name' => $location->name ?? 'N/A',
+                'zone_id' => optional($location?->cluster?->zone)->id,
+                'cluster_id' => optional($location?->cluster)->id,
+                'department' => $assignmentsGroup->groupBy('department_id')->map(function ($deptAssignments) {
                     $deptFirst = $deptAssignments->first();
 
                     return [
-                        'department_id'   => $deptFirst->department_id,
-                        'department_name' => $deptFirst->department->name ?? 'N/A',
-                        'roles' => $deptAssignments->map(function($uldr) {
+                        'department_id' => $deptFirst->department_id,
+                        'department_name' => optional($deptFirst->department)->name ?? 'N/A',
+                        'roles' => $deptAssignments->map(function ($uldr) {
                             return [
                                 'value' => $uldr->role->id,
                                 'label' => $uldr->role->name,
                             ];
-                        })->values()
+                        })->values(),
                     ];
-                })->values()
+                })->values(),
             ];
         })->values();
 
         return response()->json([
             'status' => true,
             'data' => [
-                'id'           => $user->id,
-                'name'         => $user->name,
-                'username'     => $user->username,
-                'email'        => $user->email,
-                'phone'        => $user->phone,
-                'dialCode'     => $user->dial_code,
-                'address'      => $user->address,
-                'signature'    => $user->signature,
+                'id' => $user->id,
+                'name' => $user->name,
+                'username' => $user->username,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'dialCode' => $user->dial_code,
+                'address' => $user->address,
+                'signature' => $user->signature,
                 'profileImage' => $user->profile_image ?? '',
-                'userRoles'    => $userRoles
-            ]
+                'roles' => $roles,
+                'userRoles' => $userRoles,
+            ],
         ]);
     }
 
