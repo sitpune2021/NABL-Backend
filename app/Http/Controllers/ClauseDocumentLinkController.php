@@ -134,7 +134,6 @@ class ClauseDocumentLinkController extends Controller
     public function show(string $id, Request $request)
     {
         $ctx = $this->labContext($request);
-
         $ownerType = $ctx['owner_type'];
         $ownerId   = $ctx['owner_id'];
         $locationId   = $ctx['location_id'];
