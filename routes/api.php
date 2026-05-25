@@ -21,7 +21,8 @@ use App\Http\Controllers\{
     ClauseDocumentLinkController,
     AuthProfileController,
     CommentController,
-    LabTaskAssignController
+    LabTaskAssignController,
+    PrefixConfigController
 };
 
 /*
@@ -224,6 +225,8 @@ Route::prefix('v1')->group(function () {
         | Comments
         |--------------------------------------------------------------------------
         */
+        Route::get('prefix-config/masters/list',[PrefixConfigController::class, 'getPrefixMasters']);
+        Route::apiResource('prefix-config', PrefixConfigController  ::class);
 
         Route::prefix('comments')->group(function () {
             Route::get('/{documentId}', [CommentController::class, 'index']);

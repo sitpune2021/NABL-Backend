@@ -9,7 +9,7 @@ return [
     'masters.category.show',
     'masters.category.delete',
     'masters.category.sync',
-    'masters.category.approve', 
+    'masters.category.approve',
 
     'masters.subcategory.index',
     'masters.subcategory.create',
@@ -17,7 +17,7 @@ return [
     'masters.subcategory.show',
     'masters.subcategory.delete',
     'masters.subcategory.sync',
-    'masters.subcategory.approve', 
+    'masters.subcategory.approve',
 
     'masters.department.index',
     'masters.department.create',
@@ -25,7 +25,7 @@ return [
     'masters.department.show',
     'masters.department.delete',
     'masters.department.sync',
-    'masters.department.approve', 
+    'masters.department.approve',
 
     'masters.unit.index',
     'masters.unit.create',
@@ -41,12 +41,12 @@ return [
     'masters.template.show',
     'masters.template.delete',
     'masters.template.sync',
-    'masters.template.approve', 
-    
-    'masters.template.version.index', 
-    'masters.template.version.show', 
-    'masters.template.version.edit', 
-    'masters.template.version.edit.approve', 
+    'masters.template.approve',
+
+    'masters.template.version.index',
+    'masters.template.version.show',
+    'masters.template.version.edit',
+    'masters.template.version.edit.approve',
 
     'masters.document.index',
     'masters.document.create',
@@ -55,9 +55,9 @@ return [
     'masters.document.delete',
     'masters.document.download',
     'masters.document.sync',
-    'masters.document.approve', 
-    'masters.document.workflow.index', 
-    'masters.document.workflow.approve', 
+    'masters.document.approve',
+    'masters.document.workflow.index',
+    'masters.document.workflow.approve',
 
     'masters.zone.index',
     'masters.zone.create',
@@ -65,7 +65,7 @@ return [
     'masters.zone.show',
     'masters.zone.delete',
     'masters.zone.sync',
-    'masters.zone.approve', 
+    'masters.zone.approve',
 
     'masters.cluster.index',
     'masters.cluster.create',
@@ -111,15 +111,20 @@ return [
     'clients.lab.assignments.index',
     'clients.lab.assignments.show',
 
+    'settings.prefix.index',
+    'settings.prefix.create',
+    'settings.prefix.edit',
+    'settings.prefix.show',
+
     'settings.rolesPermission.index',
     'settings.rolesPermission.create',
     'settings.rolesPermission.edit',
     'settings.rolesPermission.delete',
 
     'settings.user.index',
-    'settings.user.create',  
-    'settings.user.edit',  
-    'settings.user.show',  
+    'settings.user.create',
+    'settings.user.edit',
+    'settings.user.show',
     'settings.user.delete',
 
     'settings.standard.index',
@@ -134,7 +139,7 @@ return [
     'settings.standard.clause.delete',
     'settings.standard.action.index',
     'settings.standard.action.approve',
-    
+
     'settings.account.index',
     'settings.account.edit',
 

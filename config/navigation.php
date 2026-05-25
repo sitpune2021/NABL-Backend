@@ -221,7 +221,7 @@ return [
           ]
         ],
         "subMenu"=> [
-          [  
+          [
             "key"=> 'clients.lab.index',
             "path"=> "/clients/lab/list",
             "title"=> 'Labs',
@@ -237,7 +237,7 @@ return [
                         ],
                         "subMenu" => [],
         ],
-           [  
+           [
               "key"=> "clients.lab.assignments.index",
         "path"=> "/clients/lab-assignments/list",
             "title"=> 'Labs Assignments',
@@ -345,6 +345,23 @@ return [
     "authority"=> [],
     "meta"=> [],
     "subMenu"=> [
+      [
+                "key" => "settings.prefix.index",
+                "path" => "/settings/prefix-config/list",
+                "title" => "Prefix",
+                "translateKey" => "nav.settingsPrefix.index",
+                "icon" => "uiFormsSelect",
+                "type" => "item",
+                "for" => "both",
+                "authority" => [],
+                "meta" => [
+                    "description" => [
+                        "translateKey" => "nav.settingsPrefix.listDesc",
+                        "label" => "Manage prefix formats and rules"
+                    ]
+                ],
+                "subMenu" => []
+            ],
       [
         "key"=> "settings.rolesPermission.index",
         "path"=> "/settings/roles-permission/list",
