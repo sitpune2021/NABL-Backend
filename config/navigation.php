@@ -346,6 +346,23 @@ return [
     "meta"=> [],
     "subMenu"=> [
       [
+        "key"=> "settings.prefixConfig.index",
+        "path"=> "/settings/prefix-config/list",
+        "title"=> "Prefix Config",
+        "translateKey"=> "nav.settingsPrefixConfig.index",
+        "icon"=> "accountRoleAndPermission",
+        "type"=> "item",
+        "for"=> "both",
+        "authority"=> [],
+        "meta"=> [
+          "description"=> [
+            "translateKey"=> "nav.settingsPrefixConfig.listDesc",
+            "label"=> "AI-powered chat systems"
+          ]
+        ],
+        "subMenu"=> []
+      ],
+      [
         "key"=> "settings.rolesPermission.index",
         "path"=> "/settings/roles-permission/list",
         "title"=> "Roles & Permission",

@@ -21,7 +21,8 @@ use App\Http\Controllers\{
     ClauseDocumentLinkController,
     AuthProfileController,
     CommentController,
-    LabTaskAssignController
+    LabTaskAssignController,
+    PrefixConfigController
 };
 
 /*
@@ -231,5 +232,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/', [CommentController::class, 'store']);
         });
         Route::apiResource('/lab-task-assign',LabTaskAssignController::class);
+
+        Route::get('prefix-config/masters', [PrefixConfigController::class, 'masters']);
+        Route::post('prefix-config/validate-value', [PrefixConfigController::class, 'validateValue']);
+        Route::post('prefix-config/validate-name', [PrefixConfigController::class, 'validateName']);
+        Route::apiResource('prefix-config', PrefixConfigController::class);
+
     });
 });
