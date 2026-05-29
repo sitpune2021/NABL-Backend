@@ -187,7 +187,7 @@ class ClauseDocumentLinkController extends Controller
         $standard = Standard::with([
                 'clauses' => function ($q) use ($ownerType, $ownerId) {
                     $q->whereNull('parent_id')
-                    ->orderBy('sort_order')
+                    ->orderBy('id')
                     ->with($this->clauseWithRelations($ownerType, $ownerId));
                 }
             ])->findOrFail($id);
@@ -253,7 +253,6 @@ class ClauseDocumentLinkController extends Controller
     public function update(Request $request, string $id)
     {
         $validator = $this->validateStandardClauses($request);
-        dd($request->all());
 
         if ($validator->fails()) {
             return response()->json([
@@ -261,61 +260,112 @@ class ClauseDocumentLinkController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
-            $ctx = $this->labContext($request);
-            $ownerType = $ctx['owner_type'];
-            $ownerId   = $ctx['owner_id'];
+
+        $ctx = $this->labContext($request);
+
+        $ownerType = $ctx['owner_type'];
+        $ownerId   = $ctx['owner_id'];
 
         DB::beginTransaction();
 
         try {
+
             if ((int) $id !== (int) $request->standard_id) {
                 throw new \Exception('Standard ID mismatch');
             }
 
+            // Delete old links
             ClauseDocumentLink::where('standard_id', $id)->delete();
 
             $links = [];
+            $allClausesHaveDocuments = true;
+
+            $status = $request->input('status', 'draft');
 
             foreach ($request->standard_clauses as $clause) {
+
                 $clauseId = $clause['clause_id'];
+
                 $documents = $clause['clause_documents_tagging'] ?? [];
+
                 $notes = $clause['notes'] ?? null;
 
-                //Update clause notes
-                if ($notes !== null) {
-                    Clause::where('id', $clauseId)
-                        ->update(['note_message' => $notes]);
+                // Check document existence
+                if (empty($documents)) {
+                    $allClausesHaveDocuments = false;
                 }
 
-                //Rebuild document links
+                $Clause = Clause::findOrFail($clauseId);
+
+                // Update notes
+                if ($notes !== null) {
+                    $Clause->update([
+                        'note_message' => $notes
+                    ]);
+                }
+
+                // Recreate links
                 foreach ($documents as $doc) {
-                    if (!empty($doc['documents']['id'])) {
+
+                    $documentId = $doc['documents']['id'] ?? null;
+
+                    $versionId = $doc['documents']['version_id'] ?? null;
+
+                    if (!empty($documentId) && $documentId > 0) {
+
                         $links[] = [
-                            'standard_id' => $id,
-                            'clause_id' => $clauseId,
-                            'document_id' => $doc['documents']['id'],
-                            'document_version_id' => $doc['documents']['version_id'] ?? null,
-                            'owner_type' => $ownerType,
-                            'owner_id' => $ownerId,
-                            'created_at' => now(),
-                            'updated_at' => now(),
+                            'standard_id'        => $id,
+                            'clause_id'          => $clauseId,
+                            'document_id'        => $documentId,
+                            'document_version_id'=> $versionId,
+                            'owner_type'         => $ownerType,
+                            'owner_id'           => $ownerId,
+                            'created_at'         => now(),
+                            'updated_at'         => now(),
                         ];
                     }
                 }
             }
 
-            //Bulk insert
+            // Insert new links
             if (!empty($links)) {
                 ClauseDocumentLink::insert($links);
             }
 
+            // Final status
+            $finalStatus = 'draft';
+
+            if ($status === 'published' && $allClausesHaveDocuments) {
+                $finalStatus = 'published';
+            }
+
+            // Optional validation
+            if ($status === 'published' && !$allClausesHaveDocuments) {
+
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'All clauses must have tagged documents before publishing.'
+                ], 422);
+            }
+
+            // Update standard status
+            Standard::where('id', $id)->update([
+                'status' => $finalStatus
+            ]);
+
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'message' => 'Standard clauses updated successfully',
                 'links_saved' => count($links),
+                'status' => $finalStatus
             ]);
+
         } catch (\Throwable $e) {
+
             DB::rollBack();
 
             Log::error('Failed to update standard clauses', [
@@ -324,6 +374,7 @@ class ClauseDocumentLinkController extends Controller
             ]);
 
             return response()->json([
+                'success' => false,
                 'message' => 'Failed to update standard clauses',
                 'error' => $e->getMessage(),
             ], 500);

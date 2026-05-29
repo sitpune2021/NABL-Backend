@@ -111,6 +111,11 @@ return [
     'clients.lab.assignments.index',
     'clients.lab.assignments.show',
 
+    'settings.prefixConfig.index',
+    'settings.prefixConfig.create',
+    'settings.prefixConfig.edit',
+    'settings.prefixConfig.delete',
+
     'settings.rolesPermission.index',
     'settings.rolesPermission.create',
     'settings.rolesPermission.edit',
