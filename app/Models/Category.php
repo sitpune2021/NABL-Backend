@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use App\Models\Document;
 
 class Category extends Model
 {
@@ -36,6 +37,11 @@ class Category extends Model
     public function subCategories()
     {
         return $this->hasMany(SubCategory::class, 'cat_id');
+    }
+
+    public function documents()
+    {
+        return $this->hasMany(Document::class, 'category_id');
     }
 
     // 🔗 Lab override → Master category

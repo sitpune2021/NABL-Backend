@@ -231,13 +231,21 @@ class CategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            $category = Category::findOrFail($id);
+            $category = Category::withCount(['documents', 'subCategories', 'overrides'])
+                ->findOrFail($id);
 
             if ($category->is_master) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Master categories cannot be deleted',
                 ], 403);
+            }
+
+            if ($category->documents_count > 0 || $category->sub_categories_count > 0 || $category->overrides_count > 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Category cannot be deleted because it is currently in use',
+                ], 409);
             }
 
             $category->delete();
