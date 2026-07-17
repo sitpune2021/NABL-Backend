@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
         $this->call(UnitSeeder::class);
         $this->call(ZoneClusterLocationSeeder::class);
         $this->call(InstrumentSeeder::class);
+        $this->call(PrefixConfigSeeder::class);
         $this->call(RolePermissionSeeder::class);
         $this->call(UserSeeder::class);
         $this->call(StandardSeeder::class);

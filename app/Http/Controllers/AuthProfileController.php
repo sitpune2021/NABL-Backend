@@ -141,7 +141,7 @@ class AuthProfileController extends Controller
                             'permissions' => $role->permissions
                                 ->pluck('name')
                                 ->values()
-                                ->push('home', 'accessDenied'),
+                                ->push('home', 'accessDenied', 'notifications.index') // ✅ Add notifications permission,
                         ];
                     })->values(),
 
@@ -277,7 +277,7 @@ class AuthProfileController extends Controller
                             'permissions' => $role->permissions
                                 ->pluck('name')
                                 ->values()
-                                ->push('home', 'accessDenied'),
+                                ->push('home', 'accessDenied', 'notifications.index') // ✅ Add notifications permission,
                         ];
                     })->values(),
                     'locations' => ($labId != 0 && !$user->is_super_admin)

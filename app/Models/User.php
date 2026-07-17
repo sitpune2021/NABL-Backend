@@ -120,8 +120,10 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(LabUser::class);
     }
 
-
-    
+    public function taskNotifications()
+    {
+        return $this->hasMany(TaskNotification::class)->orderByDesc('created_at');
+    }
 }
 
 

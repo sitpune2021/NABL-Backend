@@ -2,6 +2,7 @@
 return [
     'home',
     'accessDenied',
+    'notifications.index',
 
     'masters.category.index',
     'masters.category.create',
