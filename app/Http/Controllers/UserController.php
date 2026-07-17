@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use App\Http\Requests\StoreUserRequest;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -345,7 +346,125 @@ class UserController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $ctx = $this->labContext($request);
+
+        try {
+            $query = User::query();
+
+            if ($ctx['lab_id'] != 0) {
+                $query->whereIn('id', function ($q) use ($ctx) {
+                    $q->select('user_id')
+                        ->from('lab_users')
+                        ->where('lab_id', $ctx['lab_id']);
+                });
+            }
+
+            $user = $query->findOrFail($id);
+
+            $validator = Validator::make($request->all(), [
+                'name'      => 'sometimes|required|string|max:255',
+                'username'  => ['sometimes', 'required', 'string', 'max:255', Rule::unique('users', 'username')->ignore($id)],
+                'email'     => ['sometimes', 'required', 'email', Rule::unique('users', 'email')->ignore($id)],
+                'dialCode'  => 'sometimes|nullable|string|max:10',
+                'phone'     => ['sometimes', 'nullable', 'string', 'max:15', Rule::unique('users', 'phone')->ignore($id)],
+                'address'   => 'sometimes|nullable|string',
+                'signature' => 'sometimes|nullable|string',
+                'role'      => 'sometimes|integer|exists:roles,id',
+                'userRoles' => 'sometimes|array',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors(),
+                    'success' => false
+                ], 422);
+            }
+
+            DB::beginTransaction();
+
+            $user->update($request->only([
+                'name',
+                'username',
+                'email',
+                'dialCode',
+                'phone',
+                'address',
+                'signature',
+            ]));
+
+            if ($ctx['lab_id'] === 0 && $request->filled('role')) {
+                app(PermissionRegistrar::class)->setPermissionsTeamId($ctx['owner_id']);
+                app(PermissionRegistrar::class)->forgetCachedPermissions();
+
+                $role = Role::where('id', $request->role)
+                    ->where('lab_id', $ctx['lab_id'])
+                    ->firstOrFail();
+
+                $user->syncRoles([$role]);
+                $user->syncPermissions($role->permissions->pluck('name')->toArray());
+            }
+
+            if ($request->filled('userRoles') && $ctx['lab_id'] !== 0) {
+                $labUser = LabUser::firstOrCreate([
+                    'user_id' => $user->id,
+                    'lab_id' => $ctx['lab_id'],
+                ]);
+
+                $labUser->accesses()->delete();
+
+                foreach ($request->userRoles as $roleBlock) {
+                    foreach ($roleBlock['department'] as $deptBlock) {
+                        foreach ($deptBlock['roles'] as $roleItem) {
+                            $roleId = $roleItem['value'];
+                            $role = Role::where('id', $roleId)
+                                ->where('lab_id', $ctx['lab_id'])
+                                ->firstOrFail();
+
+                            $user->assignRole($role);
+                            $user->syncPermissions($role->permissions->pluck('name')->toArray());
+
+                            $labLocationDepartment = LabLocationDepartment::firstOrCreate([
+                                'location_id' => $roleBlock['location_id'],
+                                'department_id' => $deptBlock['department_id'] ?? null,
+                            ]);
+
+                            LabUserAccess::create([
+                                'lab_user_id' => $labUser->id,
+                                'location_id' => $roleBlock['location_id'],
+                                'lab_location_department_id' => $labLocationDepartment->id,
+                                'role_id' => $role->id,
+                                'status' => 'active',
+                                'granted_at' => now(),
+                            ]);
+                        }
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'User updated successfully',
+                'data' => $user->fresh()->load(['roles', 'labUsers.accesses.role']),
+                'success' => true
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'User not found',
+                'success' => false
+            ], 404);
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to update user',
+                'error' => $e->getMessage(),
+                'success' => false
+            ], 500);
+        }
     }
 
     /**
@@ -353,6 +472,41 @@ class UserController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        DB::beginTransaction();
+
+        try {
+            $user = User::findOrFail($id);
+
+            $user->syncRoles([]);
+            $user->syncPermissions([]);
+
+            foreach ($user->labUsers as $labUser) {
+                $labUser->accesses()->delete();
+                $labUser->delete();
+            }
+
+            $user->delete();
+            DB::commit();
+
+            return response()->json([
+                'message' => 'User deleted successfully',
+                'success' => true
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'User not found',
+                'success' => false
+            ], 404);
+        } catch (Exception $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'message' => 'Failed to delete user',
+                'error' => $e->getMessage(),
+                'success' => false
+            ], 500);
+        }
     }
 }

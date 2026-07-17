@@ -22,6 +22,7 @@ use App\Http\Controllers\{
     AuthProfileController,
     CommentController,
     LabTaskAssignController,
+    TaskNotificationController,
     PrefixConfigController
 };
 
@@ -232,6 +233,10 @@ Route::prefix('v1')->group(function () {
             Route::post('/', [CommentController::class, 'store']);
         });
         Route::apiResource('/lab-task-assign',LabTaskAssignController::class);
+        Route::get('notifications', [TaskNotificationController::class, 'index']);
+        Route::get('notifications/unread-count', [TaskNotificationController::class, 'unreadCount']);
+        Route::post('notifications/{id}/read', [TaskNotificationController::class, 'markAsRead']);
+        Route::post('notifications/read-all', [TaskNotificationController::class, 'markAllAsRead']);
 
         Route::get('prefix-config/masters', [PrefixConfigController::class, 'masters']);
         Route::post('prefix-config/validate-value', [PrefixConfigController::class, 'validateValue']);

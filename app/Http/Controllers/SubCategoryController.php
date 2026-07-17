@@ -232,7 +232,16 @@ class SubCategoryController extends Controller
     {
         DB::beginTransaction();
         try {
-            SubCategory::findOrFail($id)->delete();
+            $subCategory = SubCategory::withCount('overrides')->findOrFail($id);
+
+            if ($subCategory->overrides_count > 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Sub Category cannot be deleted because it is currently in use',
+                ], 409);
+            }
+
+            $subCategory->delete();
 
             DB::commit();
 
